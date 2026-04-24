@@ -1,6 +1,6 @@
 # OpAgent Marketplace
 
-Official catalog of agents, skills, and tools for [OpAgent](https://www.opagent.io).
+Official open-source catalog of agents, skills, and tools for [OpAgent](https://www.opagent.io).
 
 ## Agents
 
@@ -20,18 +20,29 @@ Official catalog of agents, skills, and tools for [OpAgent](https://www.opagent.
 
 | ID | Name | Description |
 |---|---|---|
-| `systools` | System Tools | System tool server bundle used by the default agents |
 | `rg-search` | RG Search | Ripgrep-based search tool for workspace and shell |
 
 ## Structure
 
 ```
-agents/<id>/AGENT.md          Agent definition
-skills/<id>/SKILL.md          Skill definition
-tools/<id>/TOOLS.md           Tool definition
+agents/<id>/
+  AGENT.md              Agent definition
+  cmd/<id>/main.go      Agent entry point
+  skills/               Agent-specific skills (if any)
+  tools/                Agent-specific tools (if any)
+
+skills/<id>/
+  SKILL.md              Skill definition
+
+tools/<id>/
+  TOOLS.md              Tool definition
+  cmd/main.go           Tool entry point
 ```
+
+## Build
+
+Agent and tool binaries are compiled from Go source. They depend on private SDK packages (`github.com/op-agent/opagent-dev/packages/...`), so standalone compilation is not supported yet. Build automation lives in private internal tooling.
 
 ## Contributing
 
-Changes to public marketplace item definitions should be made in this repository.
-Binary build and release automation live in private internal tooling.
+Changes to marketplace item definitions and source should be made in this repository.
