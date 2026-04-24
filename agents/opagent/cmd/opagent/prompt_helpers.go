@@ -1,4 +1,4 @@
-package agentprompt
+package main
 
 import (
 	"fmt"

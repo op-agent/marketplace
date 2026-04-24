@@ -6,8 +6,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-
-	"github.com/op-agent/marketplace/internal/common"
 )
 
 type toolConfig struct {
@@ -70,7 +68,7 @@ func loadToolConfig(workdir string) (toolConfig, error) {
 	if err != nil {
 		return cfg, err
 	}
-	secrets, err := common.LoadSecretsFile(secretsPath)
+	secrets, err := LoadSecretsFile(secretsPath)
 	if err != nil {
 		return cfg, err
 	}
@@ -120,7 +118,7 @@ func resolveConfiguredString(raw string, fallback string, secrets map[string]str
 	if raw == "" {
 		return fallback, nil
 	}
-	return common.ResolveSecretRefs(raw, secrets)
+	return ResolveSecretRefs(raw, secrets)
 }
 
 func resolveOptionalConfiguredString(raw string, fallback string, secrets map[string]string) (string, error) {
@@ -128,7 +126,7 @@ func resolveOptionalConfiguredString(raw string, fallback string, secrets map[st
 	if raw == "" {
 		return fallback, nil
 	}
-	value, err := common.ResolveSecretRefs(raw, secrets)
+	value, err := ResolveSecretRefs(raw, secrets)
 	if err != nil && strings.Contains(err.Error(), "missing secrets:") {
 		return fallback, nil
 	}

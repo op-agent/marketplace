@@ -53,6 +53,7 @@ jobs:
           [[ ! -e tools/systools ]] || { echo "systools must not be part of marketplace; it is bundled with runtime" >&2; exit 1; }
           [[ ! -e AGENTS.md ]] || { echo "AGENTS.md must not be committed to the public marketplace repo" >&2; exit 1; }
           [[ ! -d scripts ]] || { echo "internal build/release scripts must not be committed to the public marketplace repo" >&2; exit 1; }
+          [[ ! -d internal ]] || { echo "shared internal packages must not be committed; helpers should live beside the agent/tool that uses them" >&2; exit 1; }
 
           if grep -RInE '(/Users/|/root/|opjp01|opagent-dev|OPAGENT_DEV|\.zshrc|keychain|notary|BEGIN (RSA |OPENSSH |EC )?PRIVATE KEY|PASSWORD=|SECRET=)' \
             --exclude-dir=.git \

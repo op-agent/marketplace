@@ -10,9 +10,7 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/op-agent/marketplace/internal/common"
 	"github.com/op-agent/opagent-protocol/go-sdk/op"
-	"github.com/op-agent/marketplace/internal/rgsearch"
 	"github.com/spf13/cobra"
 )
 
@@ -58,17 +56,17 @@ func run() error {
 	return nil
 }
 
-func handleSearch(ctx context.Context, req *op.CallToolRequest, input searchInput) (*op.CallToolResult, rgsearch.Result, error) {
+func handleSearch(ctx context.Context, req *op.CallToolRequest, input searchInput) (*op.CallToolResult, Result, error) {
 	root, err := resolveRoot(req, input.Root)
 	if err != nil {
-		return nil, rgsearch.Result{}, err
+		return nil, Result{}, err
 	}
 	exePath, err := os.Executable()
 	if err != nil {
-		return nil, rgsearch.Result{}, err
+		return nil, Result{}, err
 	}
 	binaryPath := filepath.Join(filepath.Dir(exePath), "rg")
-	result, err := rgsearch.Search(ctx, binaryPath, rgsearch.Query{
+	result, err := Search(ctx, binaryPath, Query{
 		Root:       root,
 		Pattern:    strings.TrimSpace(input.Query),
 		Regex:      input.Regex,
@@ -80,7 +78,7 @@ func handleSearch(ctx context.Context, req *op.CallToolRequest, input searchInpu
 		MaxMatches: input.MaxMatches,
 	})
 	if err != nil {
-		return nil, rgsearch.Result{}, err
+		return nil, Result{}, err
 	}
 	return nil, result, nil
 }
@@ -88,11 +86,11 @@ func handleSearch(ctx context.Context, req *op.CallToolRequest, input searchInpu
 func resolveRoot(req *op.CallToolRequest, explicit string) (string, error) {
 	explicit = strings.TrimSpace(explicit)
 	if explicit != "" {
-		return common.ResolveAbsolutePath("", explicit)
+		return ResolveAbsolutePath("", explicit)
 	}
 	if req != nil && req.Params.Meta != nil {
 		if raw := strings.TrimSpace(fmt.Sprint(req.Params.Meta["workdir"])); raw != "" {
-			return common.ResolveAbsolutePath("", raw)
+			return ResolveAbsolutePath("", raw)
 		}
 	}
 	return os.Getwd()

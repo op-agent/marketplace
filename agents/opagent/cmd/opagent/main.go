@@ -12,7 +12,6 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/op-agent/marketplace/internal/agentprompt"
 	"github.com/op-agent/opagent-protocol/go-sdk/op"
 	"gopkg.in/yaml.v3"
 )
@@ -103,13 +102,13 @@ func handleOpNode(ctx context.Context, req *op.ServerRequest[*op.OpNodeParams], 
 }
 
 func buildPrompt(ctx context.Context, session *op.ServerSession, agentFile string, meta op.Meta) (string, error) {
-	basePrompt, err := agentprompt.LoadMarkdownBody(agentFile)
+	basePrompt, err := LoadMarkdownBody(agentFile)
 	if err != nil {
 		return "", fmt.Errorf("load agent prompt: %w", err)
 	}
-	basePrompt = agentprompt.ExpandPlatformVariables(basePrompt, runtime.GOOS)
+	basePrompt = ExpandPlatformVariables(basePrompt, runtime.GOOS)
 
-	cwdAgentsPath, err := agentprompt.ResolveCwdAgentsPath(metaString(meta, "cwd"))
+	cwdAgentsPath, err := ResolveCwdAgentsPath(metaString(meta, "cwd"))
 	if err != nil {
 		return "", fmt.Errorf("resolve cwd AGENTS.md: %w", err)
 	}
@@ -119,10 +118,10 @@ func buildPrompt(ctx context.Context, session *op.ServerSession, agentFile strin
 		return "", fmt.Errorf("resolve skill contexts: %w", err)
 	}
 
-	return agentprompt.BuildSystemPromptWithCwdAgentsPath(basePrompt, cwdAgentsPath, availableSkills, selectedSkills, selectedSkillContextFromMeta(meta)), nil
+	return BuildSystemPromptWithCwdAgentsPath(basePrompt, cwdAgentsPath, availableSkills, selectedSkills, selectedSkillContextFromMeta(meta)), nil
 }
 
-func resolveSkillContexts(ctx context.Context, session *op.ServerSession, meta op.Meta) ([]agentprompt.SkillContext, []agentprompt.SkillContext, error) {
+func resolveSkillContexts(ctx context.Context, session *op.ServerSession, meta op.Meta) ([]SkillContext, []SkillContext, error) {
 	if session == nil {
 		return nil, nil, fmt.Errorf("server session is required")
 	}
@@ -149,7 +148,7 @@ func resolveSkillContexts(ctx context.Context, session *op.ServerSession, meta o
 	}
 
 	agentSkillKeys := []string(nil)
-	skillByKey := make(map[string]agentprompt.SkillContext)
+	skillByKey := make(map[string]SkillContext)
 	for _, node := range nodes {
 		switch strings.TrimSpace(node.Kind) {
 		case string(op.NodeKindAgent):
@@ -166,7 +165,7 @@ func resolveSkillContexts(ctx context.Context, session *op.ServerSession, meta o
 			if err := json.Unmarshal(node.Meta, &skillMeta); err != nil {
 				return nil, nil, fmt.Errorf("decode skill meta: %w", err)
 			}
-			skillByKey[strings.TrimSpace(node.Key)] = agentprompt.SkillContext{
+			skillByKey[strings.TrimSpace(node.Key)] = SkillContext{
 				Key:         strings.TrimSpace(node.Key),
 				Slug:        strings.TrimSpace(skillMeta.Slug),
 				Name:        strings.TrimSpace(skillMeta.Name),
@@ -182,8 +181,8 @@ func resolveSkillContexts(ctx context.Context, session *op.ServerSession, meta o
 		selectedKeys[key] = struct{}{}
 	}
 
-	available := make([]agentprompt.SkillContext, 0, len(agentSkillKeys))
-	selected := make([]agentprompt.SkillContext, 0, len(selectedKeys))
+	available := make([]SkillContext, 0, len(agentSkillKeys))
+	selected := make([]SkillContext, 0, len(selectedKeys))
 	selectedSeen := make(map[string]struct{})
 	for _, key := range agentSkillKeys {
 		key = strings.TrimSpace(key)

@@ -1,4 +1,4 @@
-package rgsearch
+package main
 
 import (
 	"bufio"

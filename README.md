@@ -39,6 +39,8 @@ tools/<id>/
   cmd/main.go           Tool entry point
 ```
 
+Helper code should live beside the agent or tool that uses it. Do not add shared `internal/` packages unless the code is intentionally becoming a public reusable module.
+
 ## Publishing
 
 Pull requests run public-safe validation only. After changes are merged to `main`, GitHub Actions builds the marketplace packages and publishes the latest catalog to R2.
