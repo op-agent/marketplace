@@ -213,19 +213,42 @@ jobs:
         run: |
           set -euo pipefail
           cd marketplace
+
+          for name in OPAGENT_MARKETPLACE_R2_ENDPOINT OPAGENT_MARKETPLACE_R2_API_ID OPAGENT_MARKETPLACE_R2_API_KEY; do
+            if [[ -z "${!name:-}" ]]; then
+              echo "Missing GitHub Actions secret: ${name}" >&2
+              exit 1
+            fi
+          done
+
           python3 - <<'PY'
           import os
           import pathlib
+          import sys
+          from urllib.parse import urlparse
+
           import boto3
           from botocore.config import Config
+          from botocore.exceptions import ClientError, S3UploadFailedError
 
           root = pathlib.Path(os.environ["MARKETPLACE_OUT_DIR"])
           bucket = os.environ.get("OPAGENT_MARKETPLACE_R2_BUCKET", "opagent-marketplace")
-          endpoint = os.environ["OPAGENT_MARKETPLACE_R2_ENDPOINT"]
+          endpoint = os.environ["OPAGENT_MARKETPLACE_R2_ENDPOINT"].rstrip("/")
           access_key = os.environ["OPAGENT_MARKETPLACE_R2_API_ID"]
           secret_key = os.environ["OPAGENT_MARKETPLACE_R2_API_KEY"]
           version = root.name
           prefix = "marketplace"
+
+          parsed = urlparse(endpoint)
+          if not parsed.scheme or not parsed.netloc:
+              print("OPAGENT_MARKETPLACE_R2_ENDPOINT must be a full URL, e.g. https://<account-id>.r2.cloudflarestorage.com", file=sys.stderr)
+              raise SystemExit(1)
+          if parsed.path not in ("", "/"):
+              print("OPAGENT_MARKETPLACE_R2_ENDPOINT must not include the bucket name or path.", file=sys.stderr)
+              print("Use https://<account-id>.r2.cloudflarestorage.com, not .../opagent-marketplace", file=sys.stderr)
+              raise SystemExit(1)
+
+          print(f"[r2] endpoint_host={parsed.netloc} bucket={bucket} prefix={prefix}")
 
           client = boto3.session.Session().client(
               service_name="s3",
@@ -236,19 +259,30 @@ jobs:
               config=Config(signature_version="s3v4"),
           )
 
-          for path in sorted(root.rglob("*.tar.gz")):
-              rel = path.relative_to(root).as_posix()
-              key = f"{prefix}/{version}/{rel}"
-              print(f"[upload] {key}")
-              client.upload_file(str(path), bucket, key)
+          def explain_auth_error(error):
+              print("R2 upload authorization failed.", file=sys.stderr)
+              print("Check that OPAGENT_MARKETPLACE_R2_API_ID / OPAGENT_MARKETPLACE_R2_API_KEY are Cloudflare R2 S3 Access Key ID and Secret Access Key, not a Cloudflare API token.", file=sys.stderr)
+              print("The R2 token must have Object Read & Write permission for bucket opagent-marketplace.", file=sys.stderr)
+              print("Also confirm OPAGENT_MARKETPLACE_R2_ENDPOINT does not include /opagent-marketplace.", file=sys.stderr)
+              print(str(error), file=sys.stderr)
 
-          index_path = root / "index.json"
-          version_key = f"{prefix}/{version}/index.json"
-          latest_key = f"{prefix}/latest/index.json"
-          print(f"[upload] {version_key}")
-          client.upload_file(str(index_path), bucket, version_key)
-          print(f"[copy] {version_key} -> {latest_key}")
-          client.copy_object(Bucket=bucket, CopySource={"Bucket": bucket, "Key": version_key}, Key=latest_key)
+          try:
+              for path in sorted(root.rglob("*.tar.gz")):
+                  rel = path.relative_to(root).as_posix()
+                  key = f"{prefix}/{version}/{rel}"
+                  print(f"[upload] {key}")
+                  client.upload_file(str(path), bucket, key)
+
+              index_path = root / "index.json"
+              version_key = f"{prefix}/{version}/index.json"
+              latest_key = f"{prefix}/latest/index.json"
+              print(f"[upload] {version_key}")
+              client.upload_file(str(index_path), bucket, version_key)
+              print(f"[copy] {version_key} -> {latest_key}")
+              client.copy_object(Bucket=bucket, CopySource={"Bucket": bucket, "Key": version_key}, Key=latest_key)
+          except (ClientError, S3UploadFailedError) as error:
+              explain_auth_error(error)
+              raise SystemExit(1)
           PY
 
       - name: Summary
