@@ -1,0 +1,69 @@
+name: Publish Marketplace
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: marketplace-r2-publish
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout marketplace source
+        uses: actions/checkout@v4
+        with:
+          path: marketplace
+
+      - name: Checkout internal build tooling
+        uses: actions/checkout@v4
+        with:
+          repository: op-agent/opagent-dev
+          token: ${{ secrets.OPAGENT_DEV_CHECKOUT_TOKEN }}
+          path: opagent-dev
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: opagent-dev/go.mod
+          cache-dependency-path: opagent-dev/go.sum
+
+      - name: Install Python R2 client dependencies
+        run: python3 -m pip install --user boto3 botocore
+
+      - name: Compute marketplace version
+        shell: bash
+        run: |
+          set -euo pipefail
+          short_sha="${GITHUB_SHA::7}"
+          echo "MARKETPLACE_VERSION=$(date -u +%Y%m%d-%H%M%S)-${short_sha}" >> "$GITHUB_ENV"
+
+      - name: Build and publish marketplace
+        shell: bash
+        env:
+          OPAGENT_MARKETPLACE_ROOT: ${{ github.workspace }}/marketplace
+          OPAGENT_MARKETPLACE_R2_BUCKET: opagent-marketplace
+          OPAGENT_MARKETPLACE_R2_ENDPOINT: ${{ secrets.OPAGENT_MARKETPLACE_R2_ENDPOINT }}
+          OPAGENT_MARKETPLACE_R2_UPLOAD_MODE: python
+          OPAGENT_MARKETPLACE_R2_API_ID: ${{ secrets.OPAGENT_MARKETPLACE_R2_API_ID }}
+          OPAGENT_MARKETPLACE_R2_API_KEY: ${{ secrets.OPAGENT_MARKETPLACE_R2_API_KEY }}
+          OPAGENT_R2_PROGRESS_INTERVAL_SECS: "60"
+        run: |
+          set -euo pipefail
+          cd opagent-dev
+          bash scripts/build-opagent-marketplace-release.sh "$MARKETPLACE_VERSION"
+          bash scripts/publish-opagent-marketplace-release.sh "$MARKETPLACE_VERSION"
+
+      - name: Summary
+        shell: bash
+        run: |
+          echo "Published marketplace version: $MARKETPLACE_VERSION" >> "$GITHUB_STEP_SUMMARY"
+          echo "Bucket: opagent-marketplace" >> "$GITHUB_STEP_SUMMARY"
+          echo "Latest catalog: https://download.opagent.io/marketplace/latest/index.json" >> "$GITHUB_STEP_SUMMARY"

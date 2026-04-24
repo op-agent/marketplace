@@ -1,6 +1,6 @@
 # OpAgent Marketplace
 
-Official open-source catalog of agents, skills, and tools for [OpAgent](https://www.opagent.io).
+Open-source catalog of agents, skills, and tools for [OpAgent](https://www.opagent.io).
 
 ## Agents
 
@@ -39,10 +39,16 @@ tools/<id>/
   cmd/main.go           Tool entry point
 ```
 
+## Publishing
+
+Pull requests run public-safe validation only. After changes are merged to `main`, GitHub Actions builds the marketplace packages and publishes the latest catalog to R2.
+
+Required publishing secrets are stored in GitHub repository settings, not in this repository.
+
 ## Build
 
-Agent and tool binaries are compiled from Go source. They depend on private SDK packages (`github.com/op-agent/opagent-dev/packages/...`), so standalone compilation is not supported yet. Build automation lives in private internal tooling.
+Agent and tool binaries are compiled from Go source by OpAgent release automation. Standalone local compilation from this repository is not supported yet.
 
 ## Contributing
 
-Changes to marketplace item definitions and source should be made in this repository.
+Changes to marketplace item definitions and source should be made in this repository through pull requests.

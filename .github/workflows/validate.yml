@@ -1,0 +1,60 @@
+name: Validate Marketplace
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate structure and public-safe content
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          required_files=(
+            README.md
+            agents/opagent/AGENT.md
+            agents/opagent/cmd/opagent/main.go
+            agents/researcher/AGENT.md
+            agents/researcher/cmd/researcher/main.go
+            agents/researcher/tools/research-tools/TOOLS.md
+            agents/researcher/tools/research-tools/main.go
+            agents/researcher/tools/research-tools/service.go
+            skills/plan/SKILL.md
+            skills/execute-plan/SKILL.md
+            tools/rg-search/TOOLS.md
+            tools/rg-search/cmd/main.go
+          )
+
+          for file in "${required_files[@]}"; do
+            [[ -f "$file" ]] || { echo "missing required file: $file" >&2; exit 1; }
+          done
+
+          [[ ! -e tools/systools ]] || { echo "systools must not be part of marketplace; it is bundled with runtime" >&2; exit 1; }
+          [[ ! -e AGENTS.md ]] || { echo "AGENTS.md must not be committed to the public marketplace repo" >&2; exit 1; }
+          [[ ! -d scripts ]] || { echo "internal build/release scripts must not be committed to the public marketplace repo" >&2; exit 1; }
+
+          if grep -RInE '(/Users/|/root/|opjp01|\.zshrc|keychain|notary|BEGIN (RSA |OPENSSH |EC )?PRIVATE KEY|PASSWORD=|SECRET=)' \
+            --exclude-dir=.git \
+            --exclude=validate.yml \
+            .; then
+            echo "possible private path, secret, or internal deployment detail found" >&2
+            exit 1
+          fi
+
+          if grep -RInE '([0-9]{1,3}\.){3}[0-9]{1,3}' --include='*.go' --include='*.md' --include='*.json' . \
+            | grep -v '127\.0\.0\.1' \
+            | grep -v '.git/'; then
+            echo "possible public IP address found" >&2
+            exit 1
+          fi
