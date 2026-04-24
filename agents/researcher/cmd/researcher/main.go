@@ -13,8 +13,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/op-agent/opagent-dev/packages/agentprompt"
-	"github.com/op-agent/opagent-dev/packages/opagent-protocol-sdk-go/op"
+	"github.com/op-agent/marketplace/internal/agentprompt"
+	"github.com/op-agent/opagent-protocol/go-sdk/op"
 	"gopkg.in/yaml.v3"
 )
 

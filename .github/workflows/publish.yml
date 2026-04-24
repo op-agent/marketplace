@@ -22,18 +22,11 @@ jobs:
         with:
           path: marketplace
 
-      - name: Checkout internal build tooling
-        uses: actions/checkout@v4
-        with:
-          repository: op-agent/opagent-dev
-          token: ${{ secrets.OPAGENT_DEV_CHECKOUT_TOKEN }}
-          path: opagent-dev
-
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
-          go-version-file: opagent-dev/go.mod
-          cache-dependency-path: opagent-dev/go.sum
+          go-version-file: marketplace/go.mod
+          cache-dependency-path: marketplace/go.sum
 
       - name: Install Python R2 client dependencies
         run: python3 -m pip install --user boto3 botocore
@@ -45,21 +38,218 @@ jobs:
           short_sha="${GITHUB_SHA::7}"
           echo "MARKETPLACE_VERSION=$(date -u +%Y%m%d-%H%M%S)-${short_sha}" >> "$GITHUB_ENV"
 
-      - name: Build and publish marketplace
+      - name: Build marketplace packages
         shell: bash
         env:
-          OPAGENT_MARKETPLACE_ROOT: ${{ github.workspace }}/marketplace
-          OPAGENT_MARKETPLACE_R2_BUCKET: opagent-marketplace
-          OPAGENT_MARKETPLACE_R2_ENDPOINT: ${{ secrets.OPAGENT_MARKETPLACE_R2_ENDPOINT }}
-          OPAGENT_MARKETPLACE_R2_UPLOAD_MODE: python
-          OPAGENT_MARKETPLACE_R2_API_ID: ${{ secrets.OPAGENT_MARKETPLACE_R2_API_ID }}
-          OPAGENT_MARKETPLACE_R2_API_KEY: ${{ secrets.OPAGENT_MARKETPLACE_R2_API_KEY }}
-          OPAGENT_R2_PROGRESS_INTERVAL_SECS: "60"
+          OPAGENT_MARKETPLACE_BASE_URL: https://download.opagent.io/marketplace
+          RIPGREP_VERSION: "14.1.1"
         run: |
           set -euo pipefail
-          cd opagent-dev
-          bash scripts/build-opagent-marketplace-release.sh "$MARKETPLACE_VERSION"
-          bash scripts/publish-opagent-marketplace-release.sh "$MARKETPLACE_VERSION"
+          cd marketplace
+
+          VERSION="$MARKETPLACE_VERSION"
+          OUT_ROOT=".tmp/opagent-marketplace"
+          VERSION_DIR="$OUT_ROOT/$VERSION"
+          ASSET_INDEX="$VERSION_DIR/assets.tsv"
+          BASE_URL="${OPAGENT_MARKETPLACE_BASE_URL%/}"
+          PLATFORMS=(darwin-arm64 linux-amd64 linux-arm64)
+
+          rm -rf "$VERSION_DIR"
+          mkdir -p "$VERSION_DIR"
+          : > "$ASSET_INDEX"
+
+          platform_to_go() {
+            case "$1" in
+              darwin-arm64) echo "darwin arm64" ;;
+              linux-amd64) echo "linux amd64" ;;
+              linux-arm64) echo "linux arm64" ;;
+              *) echo "unsupported platform: $1" >&2; exit 1 ;;
+            esac
+          }
+
+          sha256_file() {
+            sha256sum "$1" | awk '{print $1}'
+          }
+
+          append_asset() {
+            local kind="$1" id="$2" name="$3" description="$4" platform="$5" url="$6" sha256="$7"
+            printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$kind" "$id" "$name" "$description" "$VERSION" "$platform" "$url" "$sha256" >> "$ASSET_INDEX"
+          }
+
+          ripgrep_asset_name() {
+            case "$1" in
+              darwin-arm64) echo "ripgrep-${RIPGREP_VERSION}-aarch64-apple-darwin.tar.gz" ;;
+              linux-amd64) echo "ripgrep-${RIPGREP_VERSION}-x86_64-unknown-linux-musl.tar.gz" ;;
+              linux-arm64) echo "ripgrep-${RIPGREP_VERSION}-aarch64-unknown-linux-gnu.tar.gz" ;;
+              *) echo "unsupported ripgrep platform: $1" >&2; exit 1 ;;
+            esac
+          }
+
+          download_ripgrep_binary() {
+            local platform="$1" destination="$2"
+            local asset_name work_dir archive_path extracted_root
+            asset_name="$(ripgrep_asset_name "$platform")"
+            work_dir="$(mktemp -d)"
+            archive_path="${work_dir}/${asset_name}"
+            extracted_root="${work_dir}/${asset_name%.tar.gz}"
+            curl --silent --show-error --fail --location \
+              "https://github.com/BurntSushi/ripgrep/releases/download/${RIPGREP_VERSION}/${asset_name}" \
+              -o "$archive_path"
+            tar -xzf "$archive_path" -C "$work_dir"
+            [[ -f "${extracted_root}/rg" ]] || { echo "ripgrep archive missing rg binary: ${asset_name}" >&2; rm -rf "$work_dir"; exit 1; }
+            cp "${extracted_root}/rg" "$destination"
+            chmod +x "$destination"
+            rm -rf "$work_dir"
+          }
+
+          build_agent_package() {
+            local agent_id="$1" name="$2" description="$3" platform="$4"
+            read -r GOOS GOARCH <<<"$(platform_to_go "$platform")"
+            local stage_dir="$VERSION_DIR/stage/${agent_id}-${platform}"
+            local pkg_dir="$VERSION_DIR/agent/${agent_id}"
+            local pkg_file="$pkg_dir/${platform}.tar.gz"
+            mkdir -p "$stage_dir/.agent" "$stage_dir/bin" "$pkg_dir"
+
+            echo "[build] ${platform}: agent ${agent_id}"
+            GOOS="$GOOS" GOARCH="$GOARCH" CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o "$stage_dir/bin/$agent_id" "./agents/${agent_id}/cmd/${agent_id}"
+            cp "agents/${agent_id}/AGENT.md" "$stage_dir/.agent/AGENT.md"
+
+            if [[ "$agent_id" == "researcher" ]]; then
+              mkdir -p "$stage_dir/skills" "$stage_dir/tools/research-tools/bin"
+              cp -R agents/researcher/skills/. "$stage_dir/skills/"
+              cp agents/researcher/tools/research-tools/TOOLS.md "$stage_dir/tools/research-tools/TOOLS.md"
+              cp agents/researcher/tools/research-tools/config.json "$stage_dir/tools/research-tools/config.json"
+              GOOS="$GOOS" GOARCH="$GOARCH" CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o "$stage_dir/tools/research-tools/bin/research-tools" ./agents/researcher/tools/research-tools
+            fi
+
+            [[ "$GOOS" == "windows" ]] || find "$stage_dir" -type f -path '*/bin/*' -exec chmod +x {} +
+            tar -czf "$pkg_file" -C "$stage_dir" .
+            append_asset "agent" "$agent_id" "$name" "$description" "$platform" "$BASE_URL/$VERSION/agent/$agent_id/$platform.tar.gz" "$(sha256_file "$pkg_file")"
+          }
+
+          build_rg_search_package() {
+            local platform="$1"
+            read -r GOOS GOARCH <<<"$(platform_to_go "$platform")"
+            local tool_id="rg-search"
+            local stage_dir="$VERSION_DIR/stage/${tool_id}-${platform}"
+            local pkg_dir="$VERSION_DIR/tool/${tool_id}"
+            local pkg_file="$pkg_dir/${platform}.tar.gz"
+            mkdir -p "$stage_dir" "$pkg_dir"
+
+            echo "[build] ${platform}: tool ${tool_id}"
+            GOOS="$GOOS" GOARCH="$GOARCH" CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o "$stage_dir/rg-search" ./tools/rg-search/cmd
+            cp tools/rg-search/TOOLS.md "$stage_dir/TOOLS.md"
+            download_ripgrep_binary "$platform" "$stage_dir/rg"
+            chmod +x "$stage_dir/rg-search" "$stage_dir/rg"
+            tar -czf "$pkg_file" -C "$stage_dir" TOOLS.md rg-search rg
+            append_asset "tool" "$tool_id" "RG Search" "System ripgrep bundle projected into ~/.opagent/bin for shell and workspace search." "$platform" "$BASE_URL/$VERSION/tool/$tool_id/$platform.tar.gz" "$(sha256_file "$pkg_file")"
+          }
+
+          build_skill_package() {
+            local skill_id="$1" name="$2" description="$3"
+            local stage_dir="$VERSION_DIR/stage/${skill_id}-any"
+            local pkg_dir="$VERSION_DIR/skill/${skill_id}"
+            local pkg_file="$pkg_dir/any.tar.gz"
+            mkdir -p "$pkg_dir"
+            rm -rf "$stage_dir"
+            mkdir -p "$stage_dir"
+            cp -R "skills/${skill_id}/." "$stage_dir/"
+            tar -czf "$pkg_file" -C "$stage_dir" .
+            append_asset "skill" "$skill_id" "$name" "$description" "any" "$BASE_URL/$VERSION/skill/$skill_id/any.tar.gz" "$(sha256_file "$pkg_file")"
+          }
+
+          for platform in "${PLATFORMS[@]}"; do
+            build_agent_package opagent OpAgent "Expert coding assistant for OpAgent development and debugging." "$platform"
+            build_agent_package researcher Researcher "Evidence-first research agent for cited markdown reports." "$platform"
+            build_rg_search_package "$platform"
+          done
+          build_skill_package plan Plan "Research a task and create or update a bound markdown plan file."
+          build_skill_package execute-plan "Execute Plan" "Execute a bound markdown plan file and update checklist progress in place."
+
+          ASSET_INDEX_ENV="$ASSET_INDEX" INDEX_FILE_ENV="$VERSION_DIR/index.json" python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          builtin_items = {
+              ("agent", "opagent"),
+              ("agent", "researcher"),
+              ("skill", "plan"),
+              ("skill", "execute-plan"),
+              ("tool", "rg-search"),
+          }
+          items = {}
+          for line in Path(os.environ["ASSET_INDEX_ENV"]).read_text().splitlines():
+              kind, item_id, name, description, version, platform, url, sha256 = line.split("\t")
+              key = (kind, item_id)
+              current = items.setdefault(key, {
+                  "id": item_id,
+                  "kind": kind,
+                  "name": name,
+                  "description": description,
+                  "builtin": key in builtin_items,
+                  "default": key in builtin_items,
+                  "version": version,
+                  "assets": {},
+              })
+              current["assets"][platform] = {"url": url, "sha256": sha256}
+          payload = {
+              "version": Path(os.environ["INDEX_FILE_ENV"]).parent.name,
+              "generatedAt": __import__("datetime").datetime.utcnow().replace(microsecond=0).isoformat() + "Z",
+              "items": [items[key] for key in sorted(items.keys())],
+          }
+          Path(os.environ["INDEX_FILE_ENV"]).write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n")
+          PY
+
+          echo "MARKETPLACE_OUT_DIR=$VERSION_DIR" >> "$GITHUB_ENV"
+
+      - name: Publish marketplace to R2
+        shell: bash
+        env:
+          OPAGENT_MARKETPLACE_R2_BUCKET: opagent-marketplace
+          OPAGENT_MARKETPLACE_R2_ENDPOINT: ${{ secrets.OPAGENT_MARKETPLACE_R2_ENDPOINT }}
+          OPAGENT_MARKETPLACE_R2_API_ID: ${{ secrets.OPAGENT_MARKETPLACE_R2_API_ID }}
+          OPAGENT_MARKETPLACE_R2_API_KEY: ${{ secrets.OPAGENT_MARKETPLACE_R2_API_KEY }}
+        run: |
+          set -euo pipefail
+          cd marketplace
+          python3 - <<'PY'
+          import os
+          import pathlib
+          import boto3
+          from botocore.config import Config
+
+          root = pathlib.Path(os.environ["MARKETPLACE_OUT_DIR"])
+          bucket = os.environ.get("OPAGENT_MARKETPLACE_R2_BUCKET", "opagent-marketplace")
+          endpoint = os.environ["OPAGENT_MARKETPLACE_R2_ENDPOINT"]
+          access_key = os.environ["OPAGENT_MARKETPLACE_R2_API_ID"]
+          secret_key = os.environ["OPAGENT_MARKETPLACE_R2_API_KEY"]
+          version = root.name
+          prefix = "marketplace"
+
+          client = boto3.session.Session().client(
+              service_name="s3",
+              endpoint_url=endpoint,
+              region_name="auto",
+              aws_access_key_id=access_key,
+              aws_secret_access_key=secret_key,
+              config=Config(signature_version="s3v4"),
+          )
+
+          for path in sorted(root.rglob("*.tar.gz")):
+              rel = path.relative_to(root).as_posix()
+              key = f"{prefix}/{version}/{rel}"
+              print(f"[upload] {key}")
+              client.upload_file(str(path), bucket, key)
+
+          index_path = root / "index.json"
+          version_key = f"{prefix}/{version}/index.json"
+          latest_key = f"{prefix}/latest/index.json"
+          print(f"[upload] {version_key}")
+          client.upload_file(str(index_path), bucket, version_key)
+          print(f"[copy] {version_key} -> {latest_key}")
+          client.copy_object(Bucket=bucket, CopySource={"Bucket": bucket, "Key": version_key}, Key=latest_key)
+          PY
 
       - name: Summary
         shell: bash

@@ -47,7 +47,13 @@ Required publishing secrets are stored in GitHub repository settings, not in thi
 
 ## Build
 
-Agent and tool binaries are compiled from Go source by OpAgent release automation. Standalone local compilation from this repository is not supported yet.
+This repository is a standalone Go module.
+
+```bash
+go test ./...
+```
+
+GitHub Actions builds release packages for supported platforms and publishes them to R2 after changes are merged to `main`.
 
 ## Contributing
 

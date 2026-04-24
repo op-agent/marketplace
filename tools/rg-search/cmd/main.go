@@ -10,9 +10,9 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/op-agent/opagent-dev/packages/common"
-	"github.com/op-agent/opagent-dev/packages/opagent-protocol-sdk-go/op"
-	"github.com/op-agent/opagent-dev/packages/rgsearch"
+	"github.com/op-agent/marketplace/internal/common"
+	"github.com/op-agent/opagent-protocol/go-sdk/op"
+	"github.com/op-agent/marketplace/internal/rgsearch"
 	"github.com/spf13/cobra"
 )
 

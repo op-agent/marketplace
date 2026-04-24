@@ -14,7 +14,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/op-agent/opagent-dev/packages/opagent-protocol-sdk-go/op"
+	"github.com/op-agent/opagent-protocol/go-sdk/op"
 	"golang.org/x/net/html"
 )
 

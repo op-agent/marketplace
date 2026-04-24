@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/op-agent/opagent-dev/packages/opagent-protocol-sdk-go/op"
+	"github.com/op-agent/opagent-protocol/go-sdk/op"
 )
 
 func TestResolveAgentFileFromExecutablePath(t *testing.T) {

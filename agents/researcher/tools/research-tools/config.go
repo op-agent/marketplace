@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/op-agent/opagent-dev/packages/common"
+	"github.com/op-agent/marketplace/internal/common"
 )
 
 type toolConfig struct {

@@ -13,16 +13,26 @@ jobs:
   validate:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
+      - name: Checkout marketplace source
         uses: actions/checkout@v4
+        with:
+          path: marketplace
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: marketplace/go.mod
+          cache-dependency-path: marketplace/go.sum
 
       - name: Validate structure and public-safe content
         shell: bash
         run: |
           set -euo pipefail
+          cd marketplace
 
           required_files=(
             README.md
+            go.mod
             agents/opagent/AGENT.md
             agents/opagent/cmd/opagent/main.go
             agents/researcher/AGENT.md
@@ -44,7 +54,7 @@ jobs:
           [[ ! -e AGENTS.md ]] || { echo "AGENTS.md must not be committed to the public marketplace repo" >&2; exit 1; }
           [[ ! -d scripts ]] || { echo "internal build/release scripts must not be committed to the public marketplace repo" >&2; exit 1; }
 
-          if grep -RInE '(/Users/|/root/|opjp01|\.zshrc|keychain|notary|BEGIN (RSA |OPENSSH |EC )?PRIVATE KEY|PASSWORD=|SECRET=)' \
+          if grep -RInE '(/Users/|/root/|opjp01|opagent-dev|OPAGENT_DEV|\.zshrc|keychain|notary|BEGIN (RSA |OPENSSH |EC )?PRIVATE KEY|PASSWORD=|SECRET=)' \
             --exclude-dir=.git \
             --exclude=validate.yml \
             .; then
@@ -58,3 +68,10 @@ jobs:
             echo "possible public IP address found" >&2
             exit 1
           fi
+
+      - name: Test Go packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd marketplace
+          go test ./...
