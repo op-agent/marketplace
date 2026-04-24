@@ -1,0 +1,12 @@
+{
+  "tavily_base_url": "https://api.tavily.com/search",
+  "tavily_api_key": "@tavily_api_key",
+  "jina_reader_prefix": "https://r.jina.ai/http://",
+  "jina_api_key": "@jina_api_key",
+  "browser_command": "agent-browser",
+  "browser_search_url_template": "https://duckduckgo.com/?q=%s",
+  "browser_open_args": ["open"],
+  "browser_snapshot_args": ["snapshot", "-i"],
+  "user_agent": "ResearcherBot/1.0 (+https://www.opagent.io)",
+  "max_fetch_chars": 16000
+}
