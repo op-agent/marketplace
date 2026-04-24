@@ -41,7 +41,7 @@ jobs:
       - name: Build marketplace packages
         shell: bash
         env:
-          OPAGENT_MARKETPLACE_BASE_URL: https://download.opagent.io/marketplace
+          OPAGENT_MARKETPLACE_BASE_URL: https://marketplace-bucket.opagent.io/marketplace
           RIPGREP_VERSION: "14.1.1"
         run: |
           set -euo pipefail
@@ -256,4 +256,4 @@ jobs:
         run: |
           echo "Published marketplace version: $MARKETPLACE_VERSION" >> "$GITHUB_STEP_SUMMARY"
           echo "Bucket: opagent-marketplace" >> "$GITHUB_STEP_SUMMARY"
-          echo "Latest catalog: https://download.opagent.io/marketplace/latest/index.json" >> "$GITHUB_STEP_SUMMARY"
+          echo "Latest catalog: https://marketplace-bucket.opagent.io/marketplace/latest/index.json" >> "$GITHUB_STEP_SUMMARY"
