@@ -229,7 +229,8 @@ jobs:
 
           import boto3
           from botocore.config import Config
-          from botocore.exceptions import ClientError, S3UploadFailedError
+          from botocore.exceptions import ClientError
+          from boto3.exceptions import S3UploadFailedError
 
           root = pathlib.Path(os.environ["MARKETPLACE_OUT_DIR"])
           bucket = os.environ.get("OPAGENT_MARKETPLACE_R2_BUCKET", "opagent-marketplace")
