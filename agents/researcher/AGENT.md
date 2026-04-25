@@ -2,6 +2,7 @@
 name: "researcher"
 description: Evidence-first research agent for producing cited Markdown reports.
 opcodes:
+  - thread/submit
   - agent/call
   - prompt/get
 run:
