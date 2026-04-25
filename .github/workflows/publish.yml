@@ -188,7 +188,6 @@ jobs:
                   "name": name,
                   "description": description,
                   "builtin": key in builtin_items,
-                  "default": key in builtin_items,
                   "version": version,
                   "assets": {},
               })
