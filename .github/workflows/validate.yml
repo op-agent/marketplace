@@ -33,6 +33,7 @@ jobs:
           required_files=(
             README.md
             go.mod
+            agents/completion/AGENT.md
             agents/opagent/AGENT.md
             agents/opagent/cmd/opagent/main.go
             agents/researcher/AGENT.md
@@ -42,6 +43,8 @@ jobs:
             agents/researcher/tools/research-tools/service.go
             skills/plan/SKILL.md
             skills/execute-plan/SKILL.md
+            skills/skill-creator/SKILL.md
+            skills/agent-browser-search/SKILL.md
             tools/rg-search/TOOLS.md
             tools/rg-search/cmd/main.go
           )

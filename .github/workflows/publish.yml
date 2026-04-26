@@ -111,7 +111,9 @@ jobs:
             mkdir -p "$stage_dir/.agent" "$stage_dir/bin" "$pkg_dir"
 
             echo "[build] ${platform}: agent ${agent_id}"
-            GOOS="$GOOS" GOARCH="$GOARCH" CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o "$stage_dir/bin/$agent_id" "./agents/${agent_id}/cmd/${agent_id}"
+            if [[ -f "agents/${agent_id}/cmd/${agent_id}/main.go" ]]; then
+              GOOS="$GOOS" GOARCH="$GOARCH" CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o "$stage_dir/bin/$agent_id" "./agents/${agent_id}/cmd/${agent_id}"
+            fi
             cp "agents/${agent_id}/AGENT.md" "$stage_dir/.agent/AGENT.md"
 
             if [[ "$agent_id" == "researcher" ]]; then
@@ -159,12 +161,15 @@ jobs:
           }
 
           for platform in "${PLATFORMS[@]}"; do
+            build_agent_package completion Completion "Inline editor completion prompt." "$platform"
             build_agent_package opagent OpAgent "Expert coding assistant for OpAgent development and debugging." "$platform"
             build_agent_package researcher Researcher "Evidence-first research agent for cited markdown reports." "$platform"
             build_rg_search_package "$platform"
           done
           build_skill_package plan Plan "Research a task and create or update a bound markdown plan file."
           build_skill_package execute-plan "Execute Plan" "Execute a bound markdown plan file and update checklist progress in place."
+          build_skill_package skill-creator "Skill Creator" "Create or update OpAgent skills for marketplace or local installation."
+          build_skill_package agent-browser-search "Agent Browser Search" "Search the web with agent-browser and extract source evidence."
 
           ASSET_INDEX_ENV="$ASSET_INDEX" INDEX_FILE_ENV="$VERSION_DIR/index.json" python3 - <<'PY'
           import json
@@ -172,10 +177,13 @@ jobs:
           from pathlib import Path
 
           builtin_items = {
+              ("agent", "completion"),
               ("agent", "opagent"),
               ("agent", "researcher"),
               ("skill", "plan"),
               ("skill", "execute-plan"),
+              ("skill", "skill-creator"),
+              ("skill", "agent-browser-search"),
               ("tool", "rg-search"),
           }
           items = {}

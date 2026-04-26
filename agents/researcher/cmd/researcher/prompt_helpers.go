@@ -9,7 +9,7 @@ import (
 )
 
 type SkillContext struct {
-	Key         string
+	ID          string
 	Slug        string
 	Name        string
 	Description string
@@ -125,16 +125,16 @@ func buildSystemPromptWithSkills(prompt string, availableSkills, selectedSkills 
 		return appendSkillsAppendix(prompt, availableSkills)
 	}
 
-	selectedKeys := make(map[string]struct{}, len(selectedSkills))
+	selectedIDs := make(map[string]struct{}, len(selectedSkills))
 	for _, skill := range selectedSkills {
-		if key := strings.TrimSpace(skill.Key); key != "" {
-			selectedKeys[key] = struct{}{}
+		if id := strings.TrimSpace(skill.ID); id != "" {
+			selectedIDs[id] = struct{}{}
 		}
 	}
 
 	filteredAvailable := make([]SkillContext, 0, len(availableSkills))
 	for _, skill := range availableSkills {
-		if _, exists := selectedKeys[strings.TrimSpace(skill.Key)]; exists {
+		if _, exists := selectedIDs[strings.TrimSpace(skill.ID)]; exists {
 			continue
 		}
 		filteredAvailable = append(filteredAvailable, skill)
@@ -226,7 +226,7 @@ func normalizeSkills(skills []SkillContext) []SkillContext {
 	result := make([]SkillContext, 0, len(skills))
 	seen := make(map[string]struct{}, len(skills))
 	for _, skill := range skills {
-		key := strings.TrimSpace(skill.Key)
+		id := strings.TrimSpace(skill.ID)
 		slug := strings.TrimSpace(skill.Slug)
 		name := strings.TrimSpace(skill.Name)
 		description := strings.TrimSpace(skill.Description)
@@ -238,16 +238,16 @@ func normalizeSkills(skills []SkillContext) []SkillContext {
 		if slug == "" || name == "" || description == "" {
 			continue
 		}
-		seenKey := key
-		if seenKey == "" {
-			seenKey = slug
+		seenID := id
+		if seenID == "" {
+			seenID = slug
 		}
-		if _, exists := seen[seenKey]; exists {
+		if _, exists := seen[seenID]; exists {
 			continue
 		}
-		seen[seenKey] = struct{}{}
+		seen[seenID] = struct{}{}
 		result = append(result, SkillContext{
-			Key:         key,
+			ID:          id,
 			Slug:        slug,
 			Name:        name,
 			Description: description,

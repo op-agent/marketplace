@@ -23,7 +23,7 @@ type agentConfig struct {
 }
 
 type listedNode struct {
-	Key  string          `json:"key"`
+	ID   string          `json:"id"`
 	Kind string          `json:"kind"`
 	URI  string          `json:"uri"`
 	Cwd  string          `json:"cwd"`
@@ -161,8 +161,8 @@ func resolveSkillContexts(ctx context.Context, session *op.ServerSession, meta o
 	if session == nil {
 		return nil, nil, fmt.Errorf("server session is required")
 	}
-	agentKey := metaString(meta, "key")
-	if agentKey == "" {
+	agentID := metaString(meta, "agentID")
+	if agentID == "" {
 		return nil, nil, nil
 	}
 
@@ -183,26 +183,27 @@ func resolveSkillContexts(ctx context.Context, session *op.ServerSession, meta o
 		return nil, nil, fmt.Errorf("decode node list: %w", err)
 	}
 
-	agentSkillKeys := []string(nil)
-	skillByKey := make(map[string]SkillContext)
+	agentSkillIDs := []string(nil)
+	skillByID := make(map[string]SkillContext)
 	for _, node := range nodes {
 		switch strings.TrimSpace(node.Kind) {
 		case string(op.NodeKindAgent):
-			if strings.TrimSpace(node.Key) != agentKey {
+			if strings.TrimSpace(node.ID) != agentID {
 				continue
 			}
 			var agentMeta listedAgentMeta
 			if err := json.Unmarshal(node.Meta, &agentMeta); err != nil {
 				return nil, nil, fmt.Errorf("decode agent meta: %w", err)
 			}
-			agentSkillKeys = append(agentSkillKeys, agentMeta.Skills...)
+			agentSkillIDs = append(agentSkillIDs, agentMeta.Skills...)
 		case string(op.NodeKindSkill):
 			var skillMeta listedSkillMeta
 			if err := json.Unmarshal(node.Meta, &skillMeta); err != nil {
 				return nil, nil, fmt.Errorf("decode skill meta: %w", err)
 			}
-			skillByKey[strings.TrimSpace(node.Key)] = SkillContext{
-				Key:         strings.TrimSpace(node.Key),
+			skillID := strings.TrimSpace(node.ID)
+			skillByID[skillID] = SkillContext{
+				ID:          skillID,
 				Slug:        strings.TrimSpace(skillMeta.Slug),
 				Name:        strings.TrimSpace(skillMeta.Name),
 				Description: strings.TrimSpace(skillMeta.Description),
@@ -212,47 +213,47 @@ func resolveSkillContexts(ctx context.Context, session *op.ServerSession, meta o
 		}
 	}
 
-	selectedKeys := make(map[string]struct{})
-	for _, key := range selectedSkillKeysFromMeta(meta) {
-		selectedKeys[key] = struct{}{}
+	selectedIDs := make(map[string]struct{})
+	for _, id := range selectedSkillIDsFromMeta(meta) {
+		selectedIDs[id] = struct{}{}
 	}
 
-	available := make([]SkillContext, 0, len(agentSkillKeys))
-	selected := make([]SkillContext, 0, len(selectedKeys))
+	available := make([]SkillContext, 0, len(agentSkillIDs))
+	selected := make([]SkillContext, 0, len(selectedIDs))
 	selectedSeen := make(map[string]struct{})
-	for _, key := range agentSkillKeys {
-		key = strings.TrimSpace(key)
-		if key == "" {
+	for _, id := range agentSkillIDs {
+		id = strings.TrimSpace(id)
+		if id == "" {
 			continue
 		}
-		skill, ok := skillByKey[key]
+		skill, ok := skillByID[id]
 		if !ok {
 			continue
 		}
-		if _, isSelected := selectedKeys[key]; isSelected {
-			if _, exists := selectedSeen[key]; !exists {
+		if _, isSelected := selectedIDs[id]; isSelected {
+			if _, exists := selectedSeen[id]; !exists {
 				selected = append(selected, skill)
-				selectedSeen[key] = struct{}{}
+				selectedSeen[id] = struct{}{}
 			}
 			continue
 		}
 		available = append(available, skill)
 	}
 
-	for _, key := range selectedSkillKeysFromMeta(meta) {
-		key = strings.TrimSpace(key)
-		if key == "" {
+	for _, id := range selectedSkillIDsFromMeta(meta) {
+		id = strings.TrimSpace(id)
+		if id == "" {
 			continue
 		}
-		if _, exists := selectedSeen[key]; exists {
+		if _, exists := selectedSeen[id]; exists {
 			continue
 		}
-		skill, ok := skillByKey[key]
+		skill, ok := skillByID[id]
 		if !ok {
 			continue
 		}
 		selected = append(selected, skill)
-		selectedSeen[key] = struct{}{}
+		selectedSeen[id] = struct{}{}
 	}
 
 	return available, selected, nil
@@ -315,11 +316,11 @@ func extractFrontMatter(content string) (string, bool) {
 	return "", false
 }
 
-func selectedSkillKeysFromMeta(meta op.Meta) []string {
+func selectedSkillIDsFromMeta(meta op.Meta) []string {
 	if meta == nil {
 		return nil
 	}
-	raw := meta["selectedSkillKeys"]
+	raw := meta["selectedSkillIDs"]
 	switch typed := raw.(type) {
 	case []string:
 		next := make([]string, 0, len(typed))

@@ -6,6 +6,7 @@ Open-source catalog of agents, skills, and tools for [OpAgent](https://www.opage
 
 | ID | Name | Description |
 |---|---|---|
+| `completion` | Completion | Inline editor completion prompt |
 | `opagent` | OpAgent | Expert coding assistant for development and debugging |
 | `researcher` | Researcher | Evidence-first research agent for cited markdown reports |
 
@@ -15,6 +16,8 @@ Open-source catalog of agents, skills, and tools for [OpAgent](https://www.opage
 |---|---|---|
 | `plan` | Plan | Research a task and create or update a bound markdown plan file |
 | `execute-plan` | Execute Plan | Execute a bound markdown plan file and update checklist progress |
+| `skill-creator` | Skill Creator | Create or update OpAgent skills for marketplace or local installation |
+| `agent-browser-search` | Agent Browser Search | Search the web with agent-browser and extract source evidence |
 
 ## Tools
 
@@ -27,7 +30,7 @@ Open-source catalog of agents, skills, and tools for [OpAgent](https://www.opage
 ```
 agents/<id>/
   AGENT.md              Agent definition
-  cmd/<id>/main.go      Agent entry point
+  cmd/<id>/main.go      Agent entry point, when the agent has a runnable daemon
   skills/               Agent-specific skills (if any)
   tools/                Agent-specific tools (if any)
 
