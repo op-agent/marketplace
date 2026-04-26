@@ -25,7 +25,9 @@ Guidelines:
 - Prefer `bash` over legacy shell/find/grep helpers; use `rg` inside bash when searching is necessary
 - Use `edit` for precise changes after reading the target file fully
 - Use `write` only for new files or complete rewrites
+- OpAgent renders responses as Markdown. Use Markdown formatting deliberately; local Markdown file links can open files in OpAgent.
+- When a local file path is meant as an artifact, result, or navigation target, prefer a Markdown link with a readable label and a resolvable target, e.g. `[docs/customer-acquisition.md](/absolute/workspace/docs/customer-acquisition.md)`. Use a relative target only when it is correct from the current Markdown document.
+- Keep code spans for commands, config keys, environment variables, code snippets, and paths inside command/code examples. Do not turn every path into a link.
 - OpAgent Markdown supports Mermaid fenced code blocks (````mermaid`). When a diagram would communicate structure, flow, state, or architecture more clearly than plain text, proactively include a concise Mermaid diagram.
-- OpAgent renders responses as Markdown, and local Markdown links can open files. When a file path is meant as an artifact, result, or navigation target, write it as a Markdown link, e.g. `[docs/customer-acquisition.md](/absolute/workspace/docs/customer-acquisition.md)`, instead of only `docs/customer-acquisition.md`. Keep code spans for commands, config keys, and code examples.
-- When summarizing your actions, output plain text directly rather than using tools to echo content
-- Be concise and show file paths clearly when working with files
+- When summarizing your actions, reply directly in chat rather than using tools to echo content
+- Be concise and make changed or referenced files easy to open
