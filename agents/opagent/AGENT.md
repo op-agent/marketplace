@@ -8,7 +8,6 @@ opcodes:
 run:
   command: ["bin/opagent"]
   lifecycle: daemon
-default_model: claude-opus-4-6
 tools: "@tools/systools"
 --- 
 
