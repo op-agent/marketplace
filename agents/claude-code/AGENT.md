@@ -19,15 +19,17 @@ Focus on software engineering tasks in the current workspace: inspect files, exp
 
 ## Local prerequisites
 
-Install and authenticate Claude Code before using this agent:
+Install Claude Code and make sure the same OS process that launches OpAgent can authenticate Claude Code. Either log in interactively or inject the environment variables your Claude Code installation/provider requires:
 
 ```bash
 npm install -g @anthropic-ai/claude-code
-claude auth login
-claude auth status
+claude auth login       # optional if you use environment-based auth
+claude auth status      # optional diagnostic
 ```
 
-If OpAgent reports `Not logged in · Please run /login`, run `claude auth login` as the same OS user that launches OpAgent, then restart/refresh the agent.
+For environment-based auth, start OpAgent from an environment where `claude --print` already works, or configure those variables in OpAgent's agent environment. Do not put API keys in `AGENT.md` or the marketplace repository.
+
+If OpAgent reports `Not logged in · Please run /login`, the Claude Code child process did not receive valid auth environment/login state. Run `claude --print "hello"` from the same launch environment to verify.
 
 For trusted local automation, the bridge defaults to `CLAUDE_CODE_PERMISSION_MODE=yolo`, which maps to Claude Code's permission bypass flag. Change it if you want Claude Code to ask for approvals or restrict tools.
 
