@@ -1,8 +1,12 @@
 ---
 name: "Claude Code"
 description: "Claude Code bridge for workspace-aware coding tasks. Requires the Anthropic Claude Code CLI on the user's machine."
+opcodes:
+  - thread/submit
+  - prompt/get
 run:
   command: ["bin/claude-code"]
+  lifecycle: daemon
 tools: []
 ---
 
