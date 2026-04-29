@@ -39,6 +39,12 @@ func TestClaudeConfigFromEnvDefaultsAndAliases(t *testing.T) {
 	if cfg.Timeout.String() != "12s" {
 		t.Fatalf("Timeout = %s", cfg.Timeout)
 	}
+	if !cfg.UseLoginShell {
+		t.Fatalf("UseLoginShell = false, want true")
+	}
+	if cfg.Shell != defaultShell() || cfg.ShellFlags != "-lc" {
+		t.Fatalf("shell config = %q %q", cfg.Shell, cfg.ShellFlags)
+	}
 }
 
 func TestBuildClaudeArgs(t *testing.T) {
@@ -63,6 +69,22 @@ func TestBuildClaudeArgs(t *testing.T) {
 	}
 	if !reflect.DeepEqual(args, want) {
 		t.Fatalf("args mismatch\n got: %#v\nwant: %#v", args, want)
+	}
+}
+
+func TestBuildClaudeCommandUsesLoginShell(t *testing.T) {
+	command, args := buildClaudeCommand(claudeConfig{
+		CLI:           "/path/claude code",
+		UseLoginShell: true,
+		Shell:         "/bin/zsh",
+		ShellFlags:    "-lic",
+	}, []string{"--print", "it's ok"})
+	if command != "/bin/zsh" {
+		t.Fatalf("command = %q", command)
+	}
+	want := []string{"-lic", "'/path/claude code' '--print' 'it'\\''s ok'"}
+	if !reflect.DeepEqual(args, want) {
+		t.Fatalf("shell args mismatch\n got: %#v\nwant: %#v", args, want)
 	}
 }
 
@@ -119,6 +141,31 @@ printf '%s\n' '{"type":"result","subtype":"success","result":"final answer"}'
 	}
 	if len(notifications) != 2 || !strings.Contains(notifications[0], "session initialized") || notifications[1] != "partial" {
 		t.Fatalf("notifications = %#v", notifications)
+	}
+}
+
+func TestRunClaudeCLIThroughLoginShell(t *testing.T) {
+	fakeClaude := writeFakeClaude(t, `#!/bin/sh
+cat >/dev/null
+printf '%s\n' "{\"type\":\"result\",\"subtype\":\"success\",\"result\":\"$CLAUDE_TEST_FROM_LOGIN\"}"
+`)
+	fakeShell := writeExecutable(t, "login-shell", `#!/bin/sh
+while [ "$#" -gt 1 ]; do shift; done
+export CLAUDE_TEST_FROM_LOGIN=from-login-shell
+exec /bin/sh -c "$1"
+`)
+	result, err := runClaudeCLI(context.Background(), claudeConfig{
+		CLI:           fakeClaude,
+		OutputFormat:  "stream-json",
+		UseLoginShell: true,
+		Shell:         fakeShell,
+		ShellFlags:    "-lc",
+	}, claudeRunInput{Prompt: "hello"})
+	if err != nil {
+		t.Fatalf("runClaudeCLI error: %v", err)
+	}
+	if result.FinalText != "from-login-shell" {
+		t.Fatalf("FinalText = %q", result.FinalText)
 	}
 }
 
@@ -192,9 +239,14 @@ func TestSplitFrontMatterAndPromptExpansion(t *testing.T) {
 
 func writeFakeClaude(t *testing.T, script string) string {
 	t.Helper()
-	path := filepath.Join(t.TempDir(), "claude")
+	return writeExecutable(t, "claude", script)
+}
+
+func writeExecutable(t *testing.T, name, script string) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), name)
 	if err := os.WriteFile(path, []byte(script), 0o755); err != nil {
-		t.Fatalf("write fake claude: %v", err)
+		t.Fatalf("write executable %s: %v", name, err)
 	}
 	return path
 }

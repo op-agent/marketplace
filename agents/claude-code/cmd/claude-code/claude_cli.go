@@ -9,6 +9,7 @@ import (
 	"io"
 	"os/exec"
 	"regexp"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -29,6 +30,9 @@ type claudeConfig struct {
 	MaxTurns            string
 	AppendOpAgentPrompt bool
 	NotifyRawEvents     bool
+	UseLoginShell       bool
+	Shell               string
+	ShellFlags          string
 	Timeout             time.Duration
 }
 
@@ -63,6 +67,9 @@ func claudeConfigFromEnv(getenv envLookup) claudeConfig {
 		MaxTurns:            firstEnv(getenv, "CLAUDE_CODE_MAX_TURNS"),
 		AppendOpAgentPrompt: envBool(getenv, "CLAUDE_CODE_APPEND_OPAGENT_PROMPT", envBool(getenv, "CLAUDE_CODE_APPEND_AGENT_PROMPT", true)),
 		NotifyRawEvents:     envBool(getenv, "CLAUDE_CODE_NOTIFY_RAW_EVENTS", false),
+		UseLoginShell:       envBool(getenv, "CLAUDE_CODE_USE_LOGIN_SHELL", true),
+		Shell:               firstEnv(getenv, "CLAUDE_CODE_SHELL", "SHELL"),
+		ShellFlags:          firstEnv(getenv, "CLAUDE_CODE_SHELL_FLAGS"),
 	}
 	if cfg.BridgeMode == "" {
 		cfg.BridgeMode = "cli"
@@ -75,6 +82,12 @@ func claudeConfigFromEnv(getenv envLookup) claudeConfig {
 	}
 	if cfg.PermissionMode == "" {
 		cfg.PermissionMode = "yolo"
+	}
+	if cfg.Shell == "" {
+		cfg.Shell = defaultShell()
+	}
+	if cfg.ShellFlags == "" {
+		cfg.ShellFlags = "-lc"
 	}
 	if seconds := strings.TrimSpace(firstEnv(getenv, "CLAUDE_CODE_TIMEOUT_SECONDS")); seconds != "" {
 		if parsed, err := strconv.Atoi(seconds); err == nil && parsed > 0 {
@@ -106,6 +119,13 @@ func envBool(getenv envLookup, key string, fallback bool) bool {
 	default:
 		return fallback
 	}
+}
+
+func defaultShell() string {
+	if runtime.GOOS == "darwin" {
+		return "/bin/zsh"
+	}
+	return "/bin/sh"
 }
 
 func buildClaudeArgs(cfg claudeConfig, agentPrompt string) []string {
@@ -151,9 +171,42 @@ func appendPermissionArgs(args *[]string, mode string) {
 	}
 }
 
+func buildClaudeCommand(cfg claudeConfig, args []string) (string, []string) {
+	if !cfg.UseLoginShell {
+		return cfg.CLI, args
+	}
+
+	shell := strings.TrimSpace(cfg.Shell)
+	if shell == "" {
+		shell = defaultShell()
+	}
+	flags := strings.Fields(cfg.ShellFlags)
+	if len(flags) == 0 {
+		flags = []string{"-lc"}
+	}
+	commandLine := shellCommandLine(append([]string{cfg.CLI}, args...)...)
+	return shell, append(flags, commandLine)
+}
+
+func shellCommandLine(argv ...string) string {
+	parts := make([]string, 0, len(argv))
+	for _, arg := range argv {
+		parts = append(parts, shellQuote(arg))
+	}
+	return strings.Join(parts, " ")
+}
+
+func shellQuote(value string) string {
+	if value == "" {
+		return "''"
+	}
+	return "'" + strings.ReplaceAll(value, "'", "'\\''") + "'"
+}
+
 func runClaudeCLI(ctx context.Context, cfg claudeConfig, input claudeRunInput) (*claudeRunResult, error) {
 	args := buildClaudeArgs(cfg, input.AgentPrompt)
-	cmd := exec.CommandContext(ctx, cfg.CLI, args...)
+	command, commandArgs := buildClaudeCommand(cfg, args)
+	cmd := exec.CommandContext(ctx, command, commandArgs...)
 	if strings.TrimSpace(input.CWD) != "" {
 		cmd.Dir = input.CWD
 	}
