@@ -7,11 +7,14 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"runtime"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/op-agent/opagent-protocol/go-sdk/op"
@@ -87,7 +90,7 @@ func claudeConfigFromEnv(getenv envLookup) claudeConfig {
 		cfg.Shell = defaultShell()
 	}
 	if cfg.ShellFlags == "" {
-		cfg.ShellFlags = "-lc"
+		cfg.ShellFlags = "-lic"
 	}
 	if seconds := strings.TrimSpace(firstEnv(getenv, "CLAUDE_CODE_TIMEOUT_SECONDS")); seconds != "" {
 		if parsed, err := strconv.Atoi(seconds); err == nil && parsed > 0 {
@@ -171,42 +174,197 @@ func appendPermissionArgs(args *[]string, mode string) {
 	}
 }
 
-func buildClaudeCommand(cfg claudeConfig, args []string) (string, []string) {
-	if !cfg.UseLoginShell {
-		return cfg.CLI, args
+// ---------------------------------------------------------------------------
+// Login shell environment capture
+// ---------------------------------------------------------------------------
+//
+// Instead of wrapping claude inside a login shell (which risks stdin/stdout
+// corruption from shell init scripts), we capture the environment that a
+// login+interactive shell would produce, then run claude directly with that
+// environment.  This gives us:
+//   - Environment variables from login and interactive shell startup files
+//   - Clean stdin/stdout pipe to claude (no shell init noise)
+//   - Correct PATH so we can resolve the claude binary location
+
+var (
+	loginShellEnvMu    sync.Mutex
+	loginShellEnvCache = map[string]capturedLoginShellEnv{}
+)
+
+type capturedLoginShellEnv struct {
+	envVars []string
+	path    string
+	err     error
+}
+
+func ensureLoginShellEnv(shell, flags string) ([]string, string, error) {
+	cacheKey := shell + "\x00" + flags
+
+	loginShellEnvMu.Lock()
+	cached, ok := loginShellEnvCache[cacheKey]
+	loginShellEnvMu.Unlock()
+	if ok {
+		return cached.envVars, cached.path, cached.err
 	}
 
-	shell := strings.TrimSpace(cfg.Shell)
+	envVars, path, err := captureLoginShellEnv(shell, flags)
+	loginShellEnvMu.Lock()
+	loginShellEnvCache[cacheKey] = capturedLoginShellEnv{envVars: envVars, path: path, err: err}
+	loginShellEnvMu.Unlock()
+	return envVars, path, err
+}
+
+func captureLoginShellEnv(shell, flags string) ([]string, string, error) {
 	if shell == "" {
 		shell = defaultShell()
 	}
-	flags := strings.Fields(cfg.ShellFlags)
-	if len(flags) == 0 {
-		flags = []string{"-lc"}
+
+	// Use a unique marker so we can skip any shell init output on stdout.
+	marker := "___OPAGENT_ENV_" + strconv.FormatInt(time.Now().UnixNano(), 36) + "___"
+
+	// Default flags are:
+	//   -l  login       (sources .zprofile / .bash_profile)
+	//   -i  interactive (sources interactive startup files)
+	//   -c  run command
+	// The marker lets us discard any banner/motd output before `env`.
+	shellArgs := strings.Fields(flags)
+	if len(shellArgs) == 0 {
+		shellArgs = []string{"-lic"}
 	}
-	commandLine := shellCommandLine(append([]string{cfg.CLI}, args...)...)
-	return shell, append(flags, commandLine)
+	script := fmt.Sprintf("echo '%s'; env", marker)
+	shellArgs = append(shellArgs, script)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, shell, shellArgs...)
+	cmd.Stdin = strings.NewReader("") // prevent shell from reading real stdin
+	cmd.Stderr = io.Discard
+
+	output, err := cmd.Output()
+	if err != nil {
+		return nil, "", fmt.Errorf("capture login shell env via %s: %w", shell, err)
+	}
+
+	text := string(output)
+	idx := strings.Index(text, marker)
+	if idx < 0 {
+		return nil, "", fmt.Errorf("env capture marker not found in %s output", shell)
+	}
+
+	envSection := text[idx+len(marker):]
+	envSection = strings.TrimLeft(envSection, "\n\r")
+
+	var envVars []string
+	capturedPath := ""
+	for _, line := range strings.Split(envSection, "\n") {
+		line = strings.TrimRight(line, "\r")
+		if line == "" {
+			continue
+		}
+		eqIdx := strings.Index(line, "=")
+		if eqIdx <= 0 {
+			continue
+		}
+		key := line[:eqIdx]
+		if !isValidEnvKey(key) {
+			continue
+		}
+		envVars = append(envVars, line)
+		if key == "PATH" {
+			capturedPath = line[eqIdx+1:]
+		}
+	}
+
+	return envVars, capturedPath, nil
 }
 
-func shellCommandLine(argv ...string) string {
-	parts := make([]string, 0, len(argv))
-	for _, arg := range argv {
-		parts = append(parts, shellQuote(arg))
+func isValidEnvKey(key string) bool {
+	if len(key) == 0 {
+		return false
 	}
-	return strings.Join(parts, " ")
+	for i, c := range key {
+		if (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || c == '_' {
+			continue
+		}
+		if i > 0 && c >= '0' && c <= '9' {
+			continue
+		}
+		return false
+	}
+	return true
 }
 
-func shellQuote(value string) string {
-	if value == "" {
-		return "''"
+// mergeEnv merges base env with override env.  Override keys win.
+func mergeEnv(base, override []string) []string {
+	seen := make(map[string]int, len(base)+len(override))
+	merged := make([]string, 0, len(base)+len(override))
+	for _, entry := range base {
+		key := envKey(entry)
+		seen[key] = len(merged)
+		merged = append(merged, entry)
 	}
-	return "'" + strings.ReplaceAll(value, "'", "'\\''") + "'"
+	for _, entry := range override {
+		key := envKey(entry)
+		if idx, ok := seen[key]; ok {
+			merged[idx] = entry
+		} else {
+			seen[key] = len(merged)
+			merged = append(merged, entry)
+		}
+	}
+	return merged
 }
+
+func envKey(entry string) string {
+	if idx := strings.Index(entry, "="); idx > 0 {
+		return entry[:idx]
+	}
+	return entry
+}
+
+// resolveCLIPath finds the claude binary using the given PATH value.
+func resolveCLIPath(cli, pathEnv string) string {
+	if filepath.IsAbs(cli) {
+		return cli
+	}
+	if pathEnv == "" {
+		return cli
+	}
+	for _, dir := range filepath.SplitList(pathEnv) {
+		candidate := filepath.Join(dir, cli)
+		if info, err := os.Stat(candidate); err == nil && !info.IsDir() {
+			return candidate
+		}
+	}
+	return cli
+}
+
+// ---------------------------------------------------------------------------
+// Run Claude CLI
+// ---------------------------------------------------------------------------
 
 func runClaudeCLI(ctx context.Context, cfg claudeConfig, input claudeRunInput) (*claudeRunResult, error) {
 	args := buildClaudeArgs(cfg, input.AgentPrompt)
-	command, commandArgs := buildClaudeCommand(cfg, args)
-	cmd := exec.CommandContext(ctx, command, commandArgs...)
+	cli := cfg.CLI
+
+	// Build command environment: if login shell mode is enabled, capture
+	// the login shell's env and resolve the CLI path from its PATH.
+	var cmdEnv []string
+	if cfg.UseLoginShell {
+		loginEnv, loginPath, err := ensureLoginShellEnv(cfg.Shell, cfg.ShellFlags)
+		if err != nil {
+			// Non-fatal: fall back to current process env, log to stderr.
+			fmt.Fprintf(os.Stderr, "claude-code: login shell env capture failed: %v (falling back to inherited env)\n", err)
+		} else {
+			cmdEnv = mergeEnv(os.Environ(), loginEnv)
+			cli = resolveCLIPath(cli, loginPath)
+		}
+	}
+
+	cmd := exec.CommandContext(ctx, cli, args...)
+	if cmdEnv != nil {
+		cmd.Env = cmdEnv
+	}
 	if strings.TrimSpace(input.CWD) != "" {
 		cmd.Dir = input.CWD
 	}
@@ -222,7 +380,7 @@ func runClaudeCLI(ctx context.Context, cfg claudeConfig, input claudeRunInput) (
 	}
 
 	if err := cmd.Start(); err != nil {
-		return nil, fmt.Errorf("start Claude Code CLI %q: %w", cfg.CLI, err)
+		return nil, fmt.Errorf("start Claude Code CLI %q: %w", cli, err)
 	}
 
 	stderrCh := make(chan string, 1)

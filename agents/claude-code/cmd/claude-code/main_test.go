@@ -42,7 +42,7 @@ func TestClaudeConfigFromEnvDefaultsAndAliases(t *testing.T) {
 	if !cfg.UseLoginShell {
 		t.Fatalf("UseLoginShell = false, want true")
 	}
-	if cfg.Shell != defaultShell() || cfg.ShellFlags != "-lc" {
+	if cfg.Shell != defaultShell() || cfg.ShellFlags != "-lic" {
 		t.Fatalf("shell config = %q %q", cfg.Shell, cfg.ShellFlags)
 	}
 }
@@ -72,19 +72,25 @@ func TestBuildClaudeArgs(t *testing.T) {
 	}
 }
 
-func TestBuildClaudeCommandUsesLoginShell(t *testing.T) {
-	command, args := buildClaudeCommand(claudeConfig{
-		CLI:           "/path/claude code",
-		UseLoginShell: true,
-		Shell:         "/bin/zsh",
-		ShellFlags:    "-lic",
-	}, []string{"--print", "it's ok"})
-	if command != "/bin/zsh" {
-		t.Fatalf("command = %q", command)
+func TestCaptureLoginShellEnv(t *testing.T) {
+	dir := t.TempDir()
+	fakeShell := writeLoginShell(t, dir)
+	envVars, pathEnv, err := captureLoginShellEnv(fakeShell, "-lic")
+	if err != nil {
+		t.Fatalf("captureLoginShellEnv error: %v", err)
 	}
-	want := []string{"-lic", "'/path/claude code' '--print' 'it'\\''s ok'"}
-	if !reflect.DeepEqual(args, want) {
-		t.Fatalf("shell args mismatch\n got: %#v\nwant: %#v", args, want)
+	if !strings.HasPrefix(pathEnv, dir) {
+		t.Fatalf("PATH = %q, want prefix %q", pathEnv, dir)
+	}
+	found := false
+	for _, entry := range envVars {
+		if entry == "CLAUDE_TEST_FROM_LOGIN=from-login-shell" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("captured env missing CLAUDE_TEST_FROM_LOGIN: %#v", envVars)
 	}
 }
 
@@ -145,21 +151,18 @@ printf '%s\n' '{"type":"result","subtype":"success","result":"final answer"}'
 }
 
 func TestRunClaudeCLIThroughLoginShell(t *testing.T) {
-	fakeClaude := writeFakeClaude(t, `#!/bin/sh
+	dir := t.TempDir()
+	writeExecutableInDir(t, dir, "claude", `#!/bin/sh
 cat >/dev/null
 printf '%s\n' "{\"type\":\"result\",\"subtype\":\"success\",\"result\":\"$CLAUDE_TEST_FROM_LOGIN\"}"
 `)
-	fakeShell := writeExecutable(t, "login-shell", `#!/bin/sh
-while [ "$#" -gt 1 ]; do shift; done
-export CLAUDE_TEST_FROM_LOGIN=from-login-shell
-exec /bin/sh -c "$1"
-`)
+	fakeShell := writeLoginShell(t, dir)
 	result, err := runClaudeCLI(context.Background(), claudeConfig{
-		CLI:           fakeClaude,
+		CLI:           "claude",
 		OutputFormat:  "stream-json",
 		UseLoginShell: true,
 		Shell:         fakeShell,
-		ShellFlags:    "-lc",
+		ShellFlags:    "-lic",
 	}, claudeRunInput{Prompt: "hello"})
 	if err != nil {
 		t.Fatalf("runClaudeCLI error: %v", err)
@@ -244,9 +247,26 @@ func writeFakeClaude(t *testing.T, script string) string {
 
 func writeExecutable(t *testing.T, name, script string) string {
 	t.Helper()
-	path := filepath.Join(t.TempDir(), name)
+	return writeExecutableInDir(t, t.TempDir(), name, script)
+}
+
+func writeExecutableInDir(t *testing.T, dir, name, script string) string {
+	t.Helper()
+	path := filepath.Join(dir, name)
 	if err := os.WriteFile(path, []byte(script), 0o755); err != nil {
 		t.Fatalf("write executable %s: %v", name, err)
 	}
 	return path
+}
+
+func writeLoginShell(t *testing.T, pathDir string) string {
+	t.Helper()
+	quotedPathDir := strings.ReplaceAll(pathDir, `"`, `\"`)
+	return writeExecutable(t, "login-shell", `#!/bin/sh
+while [ "$#" -gt 1 ]; do shift; done
+export CLAUDE_TEST_FROM_LOGIN=from-login-shell
+export PATH="`+quotedPathDir+`:$PATH"
+echo shell-startup-noise
+exec /bin/sh -c "$1"
+`)
 }

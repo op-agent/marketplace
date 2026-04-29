@@ -17,7 +17,7 @@ Focus on software engineering tasks in the current workspace: inspect files, exp
 ## Bridge behavior
 
 - The OpAgent agent daemon receives a user request and invokes the local `claude` CLI in non-interactive print mode.
-- By default the daemon starts Claude Code through a login shell (`$SHELL -lc ...`) so shell-injected auth variables, PATH setup, and provider configuration are available to the child process.
+- By default the daemon captures environment variables from a login+interactive shell (`$SHELL -lic 'env'`) and then runs Claude Code directly, so shell-injected auth variables, PATH setup, and provider configuration are available without shell startup output corrupting Claude's JSON stream.
 - The daemon streams Claude Code JSON events back to OpAgent notifications and returns the final text answer as the agent result.
 - The working directory is the OpAgent request `cwd` metadata when present; otherwise it is the daemon's current directory.
 - Claude Code uses its own CLI tools and permissions. OpAgent tools are not forwarded into the Claude Code process.
@@ -32,9 +32,9 @@ claude auth login       # optional if you use environment-based auth
 claude auth status      # optional diagnostic
 ```
 
-For environment-based auth, put the variables in a file loaded by your login shell (for example `~/.zprofile` on macOS zsh) or start OpAgent from an environment where `claude --print` already works. The bridge launches Claude Code through a login shell by default so those variables can be injected into the child process. Do not put API keys in `AGENT.md` or the marketplace repository.
+For environment-based auth, put the variables in a file loaded by your login or interactive shell, or start OpAgent from an environment where `claude --print` already works. The bridge captures the login+interactive shell environment by default so those variables can be injected into the Claude Code child process. Do not put API keys in `AGENT.md` or the marketplace repository.
 
-If your variables live in an interactive-only zsh startup file, either move/export them from the login profile or set `CLAUDE_CODE_SHELL_FLAGS=-lic` so zsh runs as both login and interactive. Avoid startup files that print banners to stdout because Claude Code's JSON stream is read from stdout.
+If you need a different shell mode, set `CLAUDE_CODE_SHELL_FLAGS`; the default is `-lic` for zsh/bash login+interactive startup files. Because the bridge only captures `env` output and then runs Claude directly, shell startup banners should not corrupt Claude Code's JSON stream.
 
 If OpAgent reports `Not logged in · Please run /login`, the Claude Code child process did not receive valid auth environment/login state. Run `claude --print "hello"` from the same launch environment to verify.
 
@@ -46,9 +46,9 @@ For trusted local automation, the bridge defaults to `CLAUDE_CODE_PERMISSION_MOD
 |---|---:|---|
 | `CLAUDE_CODE_BRIDGE_MODE` | `cli` | Bridge mode. Only `cli` is packaged in the marketplace MVP. |
 | `CLAUDE_CODE_CLI` | `claude` | Claude Code executable path. `CLAUDE_CODE_COMMAND` is also accepted for compatibility. |
-| `CLAUDE_CODE_USE_LOGIN_SHELL` | `true` | Invoke Claude Code via a login shell so shell-injected auth variables are available. Set `false` to exec the CLI directly. |
-| `CLAUDE_CODE_SHELL` | `$SHELL` or platform default | Shell used when login shell mode is enabled. |
-| `CLAUDE_CODE_SHELL_FLAGS` | `-lc` | Flags passed before the quoted Claude command. Use `-lic` if your env is only in interactive zsh config. |
+| `CLAUDE_CODE_USE_LOGIN_SHELL` | `true` | Capture environment from a login+interactive shell before running Claude Code. Set `false` to use only the inherited process env. |
+| `CLAUDE_CODE_SHELL` | `$SHELL` or platform default | Shell used when environment capture is enabled. |
+| `CLAUDE_CODE_SHELL_FLAGS` | `-lic` | Shell flags used for environment capture. Must include `-c`; default covers login and interactive zsh/bash startup files. |
 | `CLAUDE_CODE_OUTPUT_FORMAT` | `stream-json` | Claude Code output format passed to `--output-format`. |
 | `CLAUDE_CODE_MODEL` | unset | Optional model passed to `--model`. |
 | `CLAUDE_CODE_PERMISSION_MODE` | `yolo` | `yolo`/`bypassPermissions` use `--dangerously-skip-permissions`; `none` passes no permission flag; other values use `--permission-mode`. |
