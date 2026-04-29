@@ -161,6 +161,7 @@ jobs:
           }
 
           for platform in "${PLATFORMS[@]}"; do
+            build_agent_package claude-code "Claude Code" "Claude Code bridge for workspace-aware coding tasks." "$platform"
             build_agent_package completion Completion "Inline editor completion prompt." "$platform"
             build_agent_package opagent OpAgent "Expert coding assistant for OpAgent development and debugging." "$platform"
             build_agent_package researcher Researcher "Evidence-first research agent for cited markdown reports." "$platform"
@@ -177,6 +178,7 @@ jobs:
           from pathlib import Path
 
           builtin_items = {
+              ("agent", "claude-code"),
               ("agent", "completion"),
               ("agent", "opagent"),
               ("agent", "researcher"),

@@ -33,6 +33,8 @@ jobs:
           required_files=(
             README.md
             go.mod
+            agents/claude-code/AGENT.md
+            agents/claude-code/cmd/claude-code/main.go
             agents/completion/AGENT.md
             agents/opagent/AGENT.md
             agents/opagent/cmd/opagent/main.go

@@ -6,6 +6,7 @@ Open-source catalog of agents, skills, and tools for [OpAgent](https://www.opage
 
 | ID | Name | Description |
 |---|---|---|
+| `claude-code` | Claude Code | Claude Code bridge for workspace-aware coding tasks |
 | `completion` | Completion | Inline editor completion prompt |
 | `opagent` | OpAgent | Expert coding assistant for development and debugging |
 | `researcher` | Researcher | Evidence-first research agent for cited markdown reports |
