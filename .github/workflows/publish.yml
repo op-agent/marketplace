@@ -22,11 +22,26 @@ jobs:
         with:
           path: marketplace
 
+      - name: Checkout protocol source
+        uses: actions/checkout@v4
+        with:
+          repository: op-agent/opagent-protocol
+          path: opagent-protocol
+
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
           go-version-file: marketplace/go.mod
           cache-dependency-path: marketplace/go.sum
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: |
+            marketplace/agents/claude-code/package-lock.json
+            opagent-protocol/ts-sdk/package-lock.json
 
       - name: Install Python R2 client dependencies
         run: python3 -m pip install --user boto3 botocore
@@ -102,6 +117,35 @@ jobs:
             rm -rf "$work_dir"
           }
 
+          prepare_claude_code_agent() {
+            echo "[build] TypeScript SDK: opagent-protocol"
+            (
+              cd ../opagent-protocol/ts-sdk
+              npm ci --omit=optional --ignore-scripts --no-audit --no-fund
+              npm run build
+            )
+
+            echo "[build] TypeScript agent: claude-code"
+            (
+              cd agents/claude-code
+              npm ci --install-links --omit=optional --ignore-scripts --no-audit --no-fund
+              npm run build
+            )
+          }
+
+          install_claude_code_runtime_deps() {
+            local stage_dir="$1"
+            local tmp_dir
+            tmp_dir="$(mktemp -d "agents/.claude-code-prod.XXXXXX")"
+            cp agents/claude-code/package.json agents/claude-code/package-lock.json "$tmp_dir/"
+            (
+              cd "$tmp_dir"
+              npm ci --install-links --omit=dev --omit=optional --ignore-scripts --no-audit --no-fund
+            )
+            cp -R "$tmp_dir/node_modules" "$stage_dir/node_modules"
+            rm -rf "$tmp_dir"
+          }
+
           build_agent_package() {
             local agent_id="$1" name="$2" description="$3" platform="$4"
             read -r GOOS GOARCH <<<"$(platform_to_go "$platform")"
@@ -111,7 +155,12 @@ jobs:
             mkdir -p "$stage_dir/.agent" "$stage_dir/bin" "$pkg_dir"
 
             echo "[build] ${platform}: agent ${agent_id}"
-            if [[ -f "agents/${agent_id}/cmd/${agent_id}/main.go" ]]; then
+            if [[ "$agent_id" == "claude-code" ]]; then
+              cp -R agents/claude-code/bin/. "$stage_dir/bin/"
+              cp -R agents/claude-code/dist "$stage_dir/dist"
+              cp agents/claude-code/package.json agents/claude-code/package-lock.json "$stage_dir/"
+              install_claude_code_runtime_deps "$stage_dir"
+            elif [[ -f "agents/${agent_id}/cmd/${agent_id}/main.go" ]]; then
               GOOS="$GOOS" GOARCH="$GOARCH" CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o "$stage_dir/bin/$agent_id" "./agents/${agent_id}/cmd/${agent_id}"
             fi
             cp "agents/${agent_id}/AGENT.md" "$stage_dir/.agent/AGENT.md"
@@ -159,6 +208,8 @@ jobs:
             tar -czf "$pkg_file" -C "$stage_dir" .
             append_asset "skill" "$skill_id" "$name" "$description" "any" "$BASE_URL/$VERSION/skill/$skill_id/any.tar.gz" "$(sha256_file "$pkg_file")"
           }
+
+          prepare_claude_code_agent
 
           for platform in "${PLATFORMS[@]}"; do
             build_agent_package claude-code "Claude Code" "Claude Code bridge for workspace-aware coding tasks." "$platform"

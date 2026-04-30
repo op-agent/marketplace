@@ -96,7 +96,10 @@ func handleCallAgent(ctx context.Context, req *op.CallAgentRequest, agentFile st
 	}
 	defer cancel()
 
-	baseMeta := req.Params.Meta.Clone().Add(op.Meta{"agentID": agentID})
+	baseMeta := req.Params.Meta.Clone()
+	if strings.TrimSpace(metaString(baseMeta, "agentID")) == "" {
+		baseMeta["agentID"] = req.Params.AgentID
+	}
 	result, err := runClaudeCLI(runCtx, cfg, claudeRunInput{
 		Prompt:      prompt,
 		AgentPrompt: agentPrompt,
@@ -104,6 +107,9 @@ func handleCallAgent(ctx context.Context, req *op.CallAgentRequest, agentFile st
 		BaseMeta:    baseMeta,
 		Notify: func(ctx context.Context, message string, meta op.Meta) error {
 			return notifyText(ctx, req.Session, message, meta)
+		},
+		NotifyContent: func(ctx context.Context, content op.Content, meta op.Meta) error {
+			return notifyContent(ctx, req.Session, content, meta)
 		},
 	})
 	if err != nil {
@@ -132,13 +138,23 @@ func handleCallAgent(ctx context.Context, req *op.CallAgentRequest, agentFile st
 }
 
 func notifyText(ctx context.Context, session *op.ServerSession, message string, meta op.Meta) error {
-	if session == nil || strings.TrimSpace(message) == "" {
+	if session == nil {
+		return nil
+	}
+	if strings.TrimSpace(message) == "" && strings.TrimSpace(metaString(meta, "type")) == "" {
+		return nil
+	}
+	return notifyContent(ctx, session, &op.TextContent{Text: message}, meta)
+}
+
+func notifyContent(ctx context.Context, session *op.ServerSession, content op.Content, meta op.Meta) error {
+	if session == nil || content == nil {
 		return nil
 	}
 	return session.NotifyInfo(ctx, &op.InfoNotificationParams{
 		OpCode:  op.NotifyMessage,
 		Meta:    meta,
-		Content: &op.TextContent{Text: message},
+		Content: content,
 	})
 }
 

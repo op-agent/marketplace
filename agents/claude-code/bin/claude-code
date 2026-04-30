@@ -1,0 +1,9 @@
+#!/usr/bin/env sh
+set -eu
+DIR="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
+ENTRY="$DIR/dist/main.js"
+if [ ! -f "$ENTRY" ]; then
+  echo "claude-code agent is not built. Run: cd $DIR && npm install && npm run build" >&2
+  exit 1
+fi
+exec node "$ENTRY" "$@"

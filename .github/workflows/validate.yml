@@ -18,11 +18,26 @@ jobs:
         with:
           path: marketplace
 
+      - name: Checkout protocol source
+        uses: actions/checkout@v4
+        with:
+          repository: op-agent/opagent-protocol
+          path: opagent-protocol
+
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
           go-version-file: marketplace/go.mod
           cache-dependency-path: marketplace/go.sum
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: |
+            marketplace/agents/claude-code/package-lock.json
+            opagent-protocol/ts-sdk/package-lock.json
 
       - name: Validate structure and public-safe content
         shell: bash
@@ -34,7 +49,15 @@ jobs:
             README.md
             go.mod
             agents/claude-code/AGENT.md
+            agents/claude-code/bin/claude-code
             agents/claude-code/cmd/claude-code/main.go
+            agents/claude-code/package.json
+            agents/claude-code/package-lock.json
+            agents/claude-code/src/main.ts
+            agents/claude-code/src/claude.ts
+            agents/claude-code/src/claudeEvents.ts
+            agents/claude-code/src/config.ts
+            agents/claude-code/tsconfig.json
             agents/completion/AGENT.md
             agents/opagent/AGENT.md
             agents/opagent/cmd/opagent/main.go
@@ -78,6 +101,18 @@ jobs:
             echo "possible public IP address found" >&2
             exit 1
           fi
+
+      - name: Test TypeScript packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd opagent-protocol/ts-sdk
+          npm ci --ignore-scripts --no-audit --no-fund
+          npm run check
+
+          cd ../../marketplace/agents/claude-code
+          npm ci --install-links --ignore-scripts --no-audit --no-fund
+          npm run check
 
       - name: Test Go packages
         shell: bash

@@ -1,0 +1,24 @@
+{
+  "name": "@op-agent/claude-code-agent",
+  "version": "0.2.1",
+  "description": "OpAgent daemon agent backed by the Claude Agent SDK",
+  "type": "module",
+  "private": true,
+  "bin": {
+    "claude-code": "./bin/claude-code"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "check": "npm run build && npm run test"
+  },
+  "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "^0.2.123",
+    "@op-agent/opagent-protocol": "file:../../../opagent-protocol/ts-sdk"
+  },
+  "devDependencies": {
+    "@types/node": "^25.0.0",
+    "typescript": "^6.0.0",
+    "vitest": "^4.0.0"
+  }
+}

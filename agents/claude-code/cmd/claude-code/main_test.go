@@ -145,7 +145,7 @@ printf '%s\n' '{"type":"result","subtype":"success","result":"final answer"}'
 	if result.FinalText != "final answer" || result.AssistantText != "partial" || result.SessionID != "sess-1" || result.Model != "sonnet" {
 		t.Fatalf("result = %#v", result)
 	}
-	if len(notifications) != 2 || !strings.Contains(notifications[0], "session initialized") || notifications[1] != "partial" {
+	if len(notifications) != 3 || notifications[0] != "" || notifications[1] != "partial" || notifications[2] != "partial" {
 		t.Fatalf("notifications = %#v", notifications)
 	}
 }

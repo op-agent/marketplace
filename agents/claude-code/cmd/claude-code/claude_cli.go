@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -40,22 +41,26 @@ type claudeConfig struct {
 }
 
 type claudeRunInput struct {
-	Prompt      string
-	AgentPrompt string
-	CWD         string
-	BaseMeta    op.Meta
-	Notify      func(context.Context, string, op.Meta) error
+	Prompt        string
+	AgentPrompt   string
+	CWD           string
+	BaseMeta      op.Meta
+	Notify        func(context.Context, string, op.Meta) error
+	NotifyContent func(context.Context, op.Content, op.Meta) error
 }
 
 type claudeRunResult struct {
-	AssistantText string
-	PlainText     string
-	FinalText     string
-	ErrorText     string
-	SessionID     string
-	Model         string
-	CWD           string
-	IsError       bool
+	AssistantText  string
+	PlainText      string
+	FinalText      string
+	ErrorText      string
+	SessionID      string
+	Model          string
+	CWD            string
+	IsError        bool
+	TextStarted    bool
+	TextEnded      bool
+	TurnResultSent bool
 }
 
 func claudeConfigFromEnv(getenv envLookup) claudeConfig {
@@ -419,6 +424,9 @@ func consumeClaudeOutput(ctx context.Context, stdout io.Reader, cfg claudeConfig
 		}
 		if readErr != nil {
 			if errors.Is(readErr, io.EOF) {
+				if result.TextStarted && !result.TextEnded {
+					return finalizeAssistantOutput(ctx, input, result)
+				}
 				return nil
 			}
 			return fmt.Errorf("read Claude Code output: %w", readErr)
@@ -430,7 +438,7 @@ func handleClaudeOutputLine(ctx context.Context, line string, cfg claudeConfig, 
 	summary, ok := summarizeClaudeEvent(line)
 	if !ok {
 		result.PlainText += line + "\n"
-		return input.notify(ctx, line+"\n", input.BaseMeta.Add(op.Meta{"type": "stream", "claudeCode": map[string]any{"kind": "text"}}))
+		return notifyAssistantDelta(ctx, input, result, line+"\n")
 	}
 
 	if summary.SessionID != "" {
@@ -453,13 +461,23 @@ func handleClaudeOutputLine(ctx context.Context, line string, cfg claudeConfig, 
 	}
 	if summary.AssistantText != "" {
 		result.AssistantText += summary.AssistantText
-		if err := input.notify(ctx, summary.AssistantText, input.BaseMeta.Add(op.Meta{"type": "stream", "claudeCode": map[string]any{"kind": "assistant"}})); err != nil {
+		if err := notifyAssistantDelta(ctx, input, result, summary.AssistantText); err != nil {
+			return err
+		}
+	}
+	if summary.FinalText != "" && !summary.IsError {
+		if err := finalizeAssistantOutput(ctx, input, result); err != nil {
 			return err
 		}
 	}
 	if summary.ProgressText != "" {
-		if err := input.notify(ctx, summary.ProgressText, input.BaseMeta.Add(op.Meta{"type": "stream", "claudeCode": map[string]any{"kind": summary.Kind}})); err != nil {
-			return err
+		// The desktop renderer consumes canonical text/tool lifecycle events.
+		// Keep Claude CLI progress as non-rendered metadata to avoid duplicate
+		// assistant text while still exposing it to raw-event diagnostics.
+		if cfg.NotifyRawEvents {
+			if err := input.notify(ctx, summary.ProgressText, input.BaseMeta.Add(op.Meta{"type": "ignore", "claudeCode": map[string]any{"kind": summary.Kind}})); err != nil {
+				return err
+			}
 		}
 	}
 	if cfg.NotifyRawEvents {
@@ -468,11 +486,89 @@ func handleClaudeOutputLine(ctx context.Context, line string, cfg claudeConfig, 
 	return nil
 }
 
+func notifyAssistantDelta(ctx context.Context, input claudeRunInput, result *claudeRunResult, text string) error {
+	if strings.TrimSpace(text) == "" && text == "" {
+		return nil
+	}
+	if !result.TextStarted {
+		if err := input.notify(ctx, "", input.BaseMeta.Add(op.Meta{"type": "text_start", "claudeCode": map[string]any{"kind": "assistant"}})); err != nil {
+			return err
+		}
+		result.TextStarted = true
+	}
+	return input.notify(ctx, text, input.BaseMeta.Add(op.Meta{"type": "text_delta", "claudeCode": map[string]any{"kind": "assistant"}}))
+}
+
+func finalizeAssistantOutput(ctx context.Context, input claudeRunInput, result *claudeRunResult) error {
+	finalText := firstNonEmpty(result.AssistantText, result.FinalText, result.PlainText)
+	if !result.TextStarted && strings.TrimSpace(finalText) != "" {
+		if err := notifyAssistantDelta(ctx, input, result, finalText); err != nil {
+			return err
+		}
+	}
+	if result.TextStarted && !result.TextEnded {
+		if err := input.notify(ctx, finalText, input.BaseMeta.Add(op.Meta{"type": "text_end", "claudeCode": map[string]any{"kind": "assistant"}})); err != nil {
+			return err
+		}
+		result.TextEnded = true
+	}
+	if !result.TurnResultSent && strings.TrimSpace(finalText) != "" {
+		if err := notifyTurnResult(ctx, input, finalText); err != nil {
+			return err
+		}
+		result.TurnResultSent = true
+	}
+	return nil
+}
+
+func notifyTurnResult(ctx context.Context, input claudeRunInput, assistantText string) error {
+	payload := op.TurnResultPayload{
+		ThreadID:      metaString(input.BaseMeta, "threadID"),
+		FileID:        metaString(input.BaseMeta, "fileID"),
+		TurnID:        firstNonEmpty(metaString(input.BaseMeta, "turnID"), metaString(input.BaseMeta, "turnRequestID")),
+		AgentID:       metaString(input.BaseMeta, "agentID"),
+		Path:          firstNonEmpty(metaString(input.BaseMeta, "path"), metaString(input.BaseMeta, "chatPath")),
+		ChatPath:      firstNonEmpty(metaString(input.BaseMeta, "chatPath"), metaString(input.BaseMeta, "path")),
+		Title:         firstNonEmpty(metaString(input.BaseMeta, "title"), "Claude Code"),
+		UserMessage:   op.NewUserMessage(input.Prompt),
+		AssistantText: assistantText,
+	}
+	raw, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("marshal turn result: %w", err)
+	}
+	return input.notifyContent(ctx, &op.JsonContent{Raw: raw}, input.BaseMeta.Add(op.Meta{"type": "turn_result", "claudeCode": map[string]any{"kind": "turn_result"}, "turnID": payload.TurnID}))
+}
+
+func metaString(meta op.Meta, key string) string {
+	if meta == nil {
+		return ""
+	}
+	value, ok := meta[key]
+	if !ok || value == nil {
+		return ""
+	}
+	return strings.TrimSpace(fmt.Sprint(value))
+}
+
 func (input claudeRunInput) notify(ctx context.Context, message string, meta op.Meta) error {
 	if input.Notify == nil {
 		return nil
 	}
 	return input.Notify(ctx, message, meta)
+}
+
+func (input claudeRunInput) notifyContent(ctx context.Context, content op.Content, meta op.Meta) error {
+	if input.NotifyContent != nil {
+		return input.NotifyContent(ctx, content, meta)
+	}
+	if input.Notify == nil {
+		return nil
+	}
+	if text, ok := content.(*op.TextContent); ok {
+		return input.Notify(ctx, text.Text, meta)
+	}
+	return nil
 }
 
 func readLimited(reader io.Reader, limit int64) string {
