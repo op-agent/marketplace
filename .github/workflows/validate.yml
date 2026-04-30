@@ -59,6 +59,10 @@ jobs:
           [[ ! -e AGENTS.md ]] || { echo "AGENTS.md must not be committed to the public marketplace repo" >&2; exit 1; }
           [[ ! -d scripts ]] || { echo "internal build/release scripts must not be committed to the public marketplace repo" >&2; exit 1; }
           [[ ! -d internal ]] || { echo "shared internal packages must not be committed; helpers should live beside the agent/tool that uses them" >&2; exit 1; }
+          if grep -nE '\("agent",[[:space:]]*"claude-code"\)' .github/workflows/publish.yml; then
+            echo "claude-code must remain manual-install only; do not publish it as a builtin item" >&2
+            exit 1
+          fi
 
           if grep -RInE '(/Users/|/root/|opjp01|opagent-dev|OPAGENT_DEV|\.zshrc|keychain|notary|BEGIN (RSA |OPENSSH |EC )?PRIVATE KEY|PASSWORD=|SECRET=)' \
             --exclude-dir=.git \

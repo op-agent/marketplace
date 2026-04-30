@@ -177,8 +177,8 @@ jobs:
           import os
           from pathlib import Path
 
+          # Claude Code requires user-local Claude CLI auth and must stay manual-install only.
           builtin_items = {
-              ("agent", "claude-code"),
               ("agent", "completion"),
               ("agent", "opagent"),
               ("agent", "researcher"),
