@@ -4,7 +4,7 @@
   "name": "ChatGPT Image",
   "description": "Generate and edit images through the paid OpAgent image service.",
   "builtin": false,
-  "version": "20260503-chatgpt-image1",
+  "version": "20260503-chatgpt-image2",
   "assets": {
     "darwin-arm64": "darwin-arm64.tar.gz",
     "darwin-amd64": "darwin-amd64.tar.gz",
