@@ -209,6 +209,73 @@ jobs:
             append_asset "skill" "$skill_id" "$name" "$description" "any" "$BASE_URL/$VERSION/skill/$skill_id/any.tar.gz" "$(sha256_file "$pkg_file")"
           }
 
+          include_prebuilt_closed_packages() {
+            [[ -d closed-packages ]] || return 0
+            VERSION_DIR_ENV="$VERSION_DIR" ASSET_INDEX_ENV="$ASSET_INDEX" BASE_URL_ENV="$BASE_URL" MARKETPLACE_VERSION_ENV="$VERSION" python3 - <<'PY'
+          import hashlib
+          import json
+          import os
+          import shutil
+          from pathlib import Path
+
+          root = Path("closed-packages")
+          version_dir = Path(os.environ["VERSION_DIR_ENV"])
+          asset_index = Path(os.environ["ASSET_INDEX_ENV"])
+          base_url = os.environ["BASE_URL_ENV"].rstrip("/")
+          marketplace_version = os.environ["MARKETPLACE_VERSION_ENV"]
+
+          valid_kinds = {"agent", "skill", "tool"}
+          valid_platforms = {"any", "darwin-arm64", "darwin-amd64", "linux-amd64", "linux-arm64"}
+
+          def require_text(data, field):
+              value = str(data.get(field, "")).strip()
+              if not value:
+                  raise ValueError(f"{field} is required")
+              if "\t" in value or "\n" in value or "\r" in value:
+                  raise ValueError(f"{field} must not contain tabs or newlines")
+              return value
+
+          rows = []
+          for manifest_path in sorted(root.glob("*/manifest.json")):
+              with manifest_path.open("r", encoding="utf-8") as handle:
+                  manifest = json.load(handle)
+              item_id = require_text(manifest, "id")
+              kind = require_text(manifest, "kind")
+              name = require_text(manifest, "name")
+              description = require_text(manifest, "description")
+              item_version = require_text(manifest, "version")
+              if kind not in valid_kinds:
+                  raise ValueError(f"{manifest_path}: unsupported kind {kind!r}")
+              if bool(manifest.get("builtin")):
+                  raise ValueError(f"{manifest_path}: closed prebuilt packages must not be builtin")
+              assets = manifest.get("assets")
+              if not isinstance(assets, dict) or not assets:
+                  raise ValueError(f"{manifest_path}: assets must be a non-empty object")
+
+              for platform, filename in sorted(assets.items()):
+                  platform = str(platform).strip()
+                  filename = str(filename).strip()
+                  if platform not in valid_platforms:
+                      raise ValueError(f"{manifest_path}: unsupported platform {platform!r}")
+                  if not filename or filename.startswith("/") or ".." in Path(filename).parts:
+                      raise ValueError(f"{manifest_path}: invalid asset filename {filename!r}")
+                  source = manifest_path.parent / filename
+                  if not source.is_file():
+                      raise ValueError(f"{manifest_path}: missing asset {filename}")
+                  destination = version_dir / kind / item_id / f"{platform}.tar.gz"
+                  destination.parent.mkdir(parents=True, exist_ok=True)
+                  shutil.copyfile(source, destination)
+                  digest = hashlib.sha256(source.read_bytes()).hexdigest()
+                  url = f"{base_url}/{marketplace_version}/{kind}/{item_id}/{platform}.tar.gz"
+                  rows.append(f"{kind}\t{item_id}\t{name}\t{description}\t{item_version}\t{platform}\t{url}\t{digest}\n")
+                  print(f"[build] prebuilt {platform}: {kind} {item_id}")
+
+          if rows:
+              with asset_index.open("a", encoding="utf-8") as handle:
+                  handle.writelines(rows)
+          PY
+          }
+
           prepare_claude_code_agent
 
           for platform in "${PLATFORMS[@]}"; do
@@ -222,6 +289,7 @@ jobs:
           build_skill_package execute-plan "Execute Plan" "Execute a bound markdown plan file and update checklist progress in place."
           build_skill_package skill-creator "Skill Creator" "Create or update OpAgent skills for marketplace or local installation."
           build_skill_package agent-browser-search "Agent Browser Search" "Search the web with agent-browser and extract source evidence."
+          include_prebuilt_closed_packages
 
           ASSET_INDEX_ENV="$ASSET_INDEX" INDEX_FILE_ENV="$VERSION_DIR/index.json" python3 - <<'PY'
           import json

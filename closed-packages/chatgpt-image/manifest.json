@@ -1,0 +1,14 @@
+{
+  "id": "chatgpt-image",
+  "kind": "skill",
+  "name": "ChatGPT Image",
+  "description": "Generate and edit images through the paid OpAgent image service.",
+  "builtin": false,
+  "version": "20260503-chatgpt-image1",
+  "assets": {
+    "darwin-arm64": "darwin-arm64.tar.gz",
+    "darwin-amd64": "darwin-amd64.tar.gz",
+    "linux-amd64": "linux-amd64.tar.gz",
+    "linux-arm64": "linux-arm64.tar.gz"
+  }
+}

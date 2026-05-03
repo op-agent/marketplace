@@ -19,6 +19,7 @@ Open-source catalog of agents, skills, and tools for [OpAgent](https://www.opage
 | `execute-plan` | Execute Plan | Execute a bound markdown plan file and update checklist progress |
 | `skill-creator` | Skill Creator | Create or update OpAgent skills for marketplace or local installation |
 | `agent-browser-search` | Agent Browser Search | Search the web with agent-browser and extract source evidence |
+| `chatgpt-image` | ChatGPT Image | Binary-only skill for paid OpAgent image generation and editing |
 
 ## Tools
 
@@ -37,6 +38,10 @@ agents/<id>/
 
 skills/<id>/
   SKILL.md              Skill definition
+
+closed-packages/<id>/
+  manifest.json         Binary-only package metadata
+  <platform>.tar.gz     Prebuilt package archive uploaded to the catalog bucket
 
 tools/<id>/
   TOOLS.md              Tool definition
