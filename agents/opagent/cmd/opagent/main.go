@@ -5,12 +5,15 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"os/signal"
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 	"syscall"
+	"time"
 
 	"github.com/op-agent/opagent-protocol/go-sdk/op"
 	"gopkg.in/yaml.v3"
@@ -30,7 +33,9 @@ type listedNode struct {
 }
 
 type listedAgentMeta struct {
-	Skills []string `json:"skills"`
+	Name      string   `json:"name"`
+	Skills    []string `json:"skills"`
+	SubAgents []string `json:"subAgents"`
 }
 
 type listedSkillMeta struct {
@@ -38,6 +43,13 @@ type listedSkillMeta struct {
 	Name        string `json:"name"`
 	Description string `json:"description"`
 }
+
+type systemConfigPayload struct {
+	BaseDir string `json:"baseDir"`
+}
+
+var defaultMemoryUpdates = newMemoryUpdateScheduler(8, 3*time.Minute)
+var enqueueMemoryUpdate = defaultMemoryUpdates.Enqueue
 
 func main() {
 	agentFile, meta, err := loadAgentRegistrationMeta()
@@ -55,6 +67,7 @@ func main() {
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM, os.Interrupt)
 	defer stop()
+	defaultMemoryUpdates.Start(ctx)
 
 	if err := server.Run(ctx, &op.StdioTransport{}); err != nil && !errors.Is(err, context.Canceled) {
 		fmt.Fprintf(os.Stderr, "opagent agent server failed: %v\n", err)
@@ -66,14 +79,26 @@ func handleCallAgent(ctx context.Context, req *op.CallAgentRequest) (*op.CallAge
 	if req == nil || req.Session == nil || req.Params == nil {
 		return nil, fmt.Errorf("agent call params are required")
 	}
+	parentMeta := cloneMeta(req.Params.Meta)
 	result, err := req.Session.OpNode(ctx, &op.OpNodeParams{
 		OpCode:  op.OpAgentLoopCreate,
-		Meta:    cloneMeta(req.Params.Meta),
+		Meta:    parentMeta,
 		Content: req.Params.Content,
 	})
 	if err != nil {
 		return nil, err
 	}
+	if result == nil {
+		return nil, fmt.Errorf("agent loop returned nil result")
+	}
+	enqueueMemoryUpdate(memoryUpdateJob{
+		Session:       req.Session,
+		ParentAgentID: metaString(parentMeta, "agentID"),
+		ParentMeta:    parentMeta,
+		ParentContent: req.Params.Content,
+		ResultMeta:    cloneMeta(result.Meta),
+		ResultContent: result.Content,
+	})
 	return &op.CallAgentResult{
 		AgentID: req.Params.AgentID,
 		Meta:    result.Meta,
@@ -118,7 +143,69 @@ func buildPrompt(ctx context.Context, session *op.ServerSession, agentFile strin
 		return "", fmt.Errorf("resolve skill contexts: %w", err)
 	}
 
-	return BuildSystemPromptWithCwdAgentsPath(basePrompt, cwdAgentsPath, availableSkills, selectedSkills, selectedSkillContextFromMeta(meta)), nil
+	memoryPath := resolveOpAgentMemoryPath(ctx, session)
+	return BuildSystemPromptWithPaths(basePrompt, cwdAgentsPath, memoryPath, availableSkills, selectedSkills, selectedSkillContextFromMeta(meta)), nil
+}
+
+func resolveOpAgentMemoryPath(ctx context.Context, session *op.ServerSession) string {
+	baseDir, err := resolveSystemBaseDir(ctx, session)
+	if err != nil {
+		slog.Debug("opagent memory path unavailable", "error", err)
+		return ""
+	}
+	return filepath.Join(baseDir, "agents", "opagent", "memory.md")
+}
+
+func resolveSystemBaseDir(ctx context.Context, session *op.ServerSession) (string, error) {
+	if session == nil {
+		return "", fmt.Errorf("server session is required")
+	}
+	result, err := session.OpNode(ctx, &op.OpNodeParams{OpCode: op.ConfigSystemGet})
+	if err != nil {
+		return "", err
+	}
+	if result == nil {
+		return "", fmt.Errorf("config/system/get returned nil result")
+	}
+	jsonContent, ok := result.Content.(*op.JsonContent)
+	if !ok || jsonContent == nil {
+		return "", fmt.Errorf("config/system/get did not return json content")
+	}
+	var cfg systemConfigPayload
+	if err := json.Unmarshal(jsonContent.Raw, &cfg); err != nil {
+		return "", fmt.Errorf("decode system config: %w", err)
+	}
+	baseDir := strings.TrimSpace(cfg.BaseDir)
+	if baseDir == "" {
+		return "", fmt.Errorf("system baseDir is required")
+	}
+	return baseDir, nil
+}
+
+func loadListedNodes(ctx context.Context, session *op.ServerSession) ([]listedNode, error) {
+	if session == nil {
+		return nil, fmt.Errorf("server session is required")
+	}
+	result, err := session.OpNode(ctx, &op.OpNodeParams{
+		OpCode: op.OpNodeList,
+		Meta:   op.Meta{"refresh": false},
+	})
+	if err != nil {
+		return nil, err
+	}
+	if result == nil {
+		return nil, fmt.Errorf("node/list returned nil result")
+	}
+	jsonContent, ok := result.Content.(*op.JsonContent)
+	if !ok || jsonContent == nil {
+		return nil, fmt.Errorf("node/list did not return json content")
+	}
+
+	var nodes []listedNode
+	if err := json.Unmarshal(jsonContent.Raw, &nodes); err != nil {
+		return nil, fmt.Errorf("decode node list: %w", err)
+	}
+	return nodes, nil
 }
 
 func resolveSkillContexts(ctx context.Context, session *op.ServerSession, meta op.Meta) ([]SkillContext, []SkillContext, error) {
@@ -130,21 +217,9 @@ func resolveSkillContexts(ctx context.Context, session *op.ServerSession, meta o
 		return nil, nil, nil
 	}
 
-	result, err := session.OpNode(ctx, &op.OpNodeParams{
-		OpCode: op.OpNodeList,
-		Meta:   op.Meta{"refresh": false},
-	})
+	nodes, err := loadListedNodes(ctx, session)
 	if err != nil {
 		return nil, nil, err
-	}
-	jsonContent, ok := result.Content.(*op.JsonContent)
-	if !ok {
-		return nil, nil, fmt.Errorf("node/list did not return json content")
-	}
-
-	var nodes []listedNode
-	if err := json.Unmarshal(jsonContent.Raw, &nodes); err != nil {
-		return nil, nil, fmt.Errorf("decode node list: %w", err)
 	}
 
 	agentSkillIDs := []string(nil)
@@ -221,6 +296,370 @@ func resolveSkillContexts(ctx context.Context, session *op.ServerSession, meta o
 	}
 
 	return available, selected, nil
+}
+
+type memoryUpdateJob struct {
+	Session       *op.ServerSession
+	ParentAgentID string
+	ParentMeta    op.Meta
+	ParentContent op.Content
+	ResultMeta    op.Meta
+	ResultContent op.Content
+}
+
+type memoryUpdateScheduler struct {
+	jobs    chan memoryUpdateJob
+	timeout time.Duration
+	once    sync.Once
+}
+
+func newMemoryUpdateScheduler(capacity int, timeout time.Duration) *memoryUpdateScheduler {
+	if capacity <= 0 {
+		capacity = 1
+	}
+	if timeout <= 0 {
+		timeout = 3 * time.Minute
+	}
+	return &memoryUpdateScheduler{
+		jobs:    make(chan memoryUpdateJob, capacity),
+		timeout: timeout,
+	}
+}
+
+func (s *memoryUpdateScheduler) Start(ctx context.Context) {
+	if s == nil {
+		return
+	}
+	s.once.Do(func() {
+		go s.run(ctx)
+	})
+}
+
+func (s *memoryUpdateScheduler) Enqueue(job memoryUpdateJob) bool {
+	if s == nil || job.Session == nil {
+		return false
+	}
+	select {
+	case s.jobs <- job:
+		return true
+	default:
+		slog.Warn("opagent memory update queue full; skipping update",
+			"threadID", firstNonEmpty(metaString(job.ResultMeta, "threadID"), metaString(job.ParentMeta, "threadID")),
+			"turnID", metaString(job.ResultMeta, "turnID"),
+		)
+		return false
+	}
+}
+
+func (s *memoryUpdateScheduler) run(ctx context.Context) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case job := <-s.jobs:
+			jobCtx, cancel := context.WithTimeout(context.Background(), s.timeout)
+			if err := runMemoryUpdate(jobCtx, job); err != nil {
+				slog.Warn("opagent memory update failed", "error", err)
+			}
+			cancel()
+		}
+	}
+}
+
+type memoryTurnSummary struct {
+	MemoryPath     string
+	ParentChatPath string
+	ParentThreadID string
+	ParentTurnID   string
+	ModelKey       string
+	UserText       string
+	AssistantText  string
+}
+
+func runMemoryUpdate(ctx context.Context, job memoryUpdateJob) error {
+	if job.Session == nil {
+		return fmt.Errorf("server session is required")
+	}
+	baseDir, err := resolveSystemBaseDir(ctx, job.Session)
+	if err != nil {
+		return fmt.Errorf("resolve baseDir: %w", err)
+	}
+	nodes, err := loadListedNodes(ctx, job.Session)
+	if err != nil {
+		return fmt.Errorf("load nodes: %w", err)
+	}
+	memoryNode, err := resolveMemorySubagentNode(firstNonEmpty(job.ParentAgentID, metaString(job.ParentMeta, "agentID"), metaString(job.ResultMeta, "agentID")), nodes)
+	if err != nil {
+		return err
+	}
+
+	summary := buildMemoryTurnSummary(baseDir, job)
+	if summary.ModelKey == "" {
+		return fmt.Errorf("memory update requires parent modelKey")
+	}
+	sessionResult, err := createMemoryChatSession(ctx, job.Session, memoryNode, baseDir, summary)
+	if err != nil {
+		return fmt.Errorf("create memory session: %w", err)
+	}
+	return runMemoryUpdateLoop(ctx, job.Session, memoryNode, sessionResult, summary)
+}
+
+func resolveMemorySubagentNode(parentAgentID string, nodes []listedNode) (*listedNode, error) {
+	agentByID := make(map[string]listedNode, len(nodes))
+	for _, node := range nodes {
+		if strings.TrimSpace(node.Kind) != string(op.NodeKindAgent) {
+			continue
+		}
+		id := strings.TrimSpace(node.ID)
+		if id == "" {
+			continue
+		}
+		agentByID[id] = node
+	}
+
+	parent, ok := agentByID[strings.TrimSpace(parentAgentID)]
+	if ok {
+		var parentMeta listedAgentMeta
+		if err := json.Unmarshal(parent.Meta, &parentMeta); err != nil {
+			return nil, fmt.Errorf("decode parent agent meta: %w", err)
+		}
+		var firstSubagent *listedNode
+		for _, id := range parentMeta.SubAgents {
+			node, exists := agentByID[strings.TrimSpace(id)]
+			if !exists {
+				continue
+			}
+			nodeCopy := node
+			if firstSubagent == nil {
+				firstSubagent = &nodeCopy
+			}
+			var childMeta listedAgentMeta
+			if err := json.Unmarshal(node.Meta, &childMeta); err != nil {
+				return nil, fmt.Errorf("decode subagent meta: %w", err)
+			}
+			if strings.TrimSpace(childMeta.Name) == "opagent-memory" {
+				return &nodeCopy, nil
+			}
+		}
+		if firstSubagent != nil && len(parentMeta.SubAgents) == 1 {
+			return firstSubagent, nil
+		}
+	}
+
+	for _, node := range agentByID {
+		var meta listedAgentMeta
+		if err := json.Unmarshal(node.Meta, &meta); err != nil {
+			return nil, fmt.Errorf("decode agent meta: %w", err)
+		}
+		if strings.TrimSpace(meta.Name) == "opagent-memory" {
+			nodeCopy := node
+			return &nodeCopy, nil
+		}
+	}
+	return nil, fmt.Errorf("opagent-memory subagent not found")
+}
+
+func buildMemoryTurnSummary(baseDir string, job memoryUpdateJob) memoryTurnSummary {
+	parentThreadID := firstNonEmpty(metaString(job.ResultMeta, "threadID"), metaString(job.ParentMeta, "threadID"))
+	parentTurnID := firstNonEmpty(metaString(job.ResultMeta, "turnID"), metaString(job.ParentMeta, "turnID"))
+	parentChatPath := firstNonEmpty(metaString(job.ResultMeta, "chatPath"), metaString(job.ResultMeta, "path"), metaString(job.ParentMeta, "chatPath"), metaString(job.ParentMeta, "path"))
+	return memoryTurnSummary{
+		MemoryPath:     filepath.Join(baseDir, "agents", "opagent", "memory.md"),
+		ParentChatPath: parentChatPath,
+		ParentThreadID: parentThreadID,
+		ParentTurnID:   parentTurnID,
+		ModelKey:       firstNonEmpty(metaString(job.ResultMeta, "modelKey"), metaString(job.ParentMeta, "modelKey")),
+		UserText:       truncateForPrompt(userTextFromContent(job.ParentContent), 4000),
+		AssistantText:  truncateForPrompt(assistantTextFromResult(job.ResultContent), 6000),
+	}
+}
+
+func createMemoryChatSession(ctx context.Context, session *op.ServerSession, memoryNode *listedNode, baseDir string, summary memoryTurnSummary) (*op.ChatSessionCreateResult, error) {
+	if memoryNode == nil {
+		return nil, fmt.Errorf("memory node is required")
+	}
+	memoryCWD := filepath.Join(baseDir, "agents", "opagent")
+	chatDir := filepath.Join(memoryCWD, ".agent", "chat", "memory")
+	if err := os.MkdirAll(chatDir, 0o755); err != nil {
+		return nil, err
+	}
+	name := sanitizePathPart(firstNonEmpty(summary.ParentThreadID, "thread")) + "-" + sanitizePathPart(firstNonEmpty(summary.ParentTurnID, fmt.Sprintf("%d", time.Now().UnixNano()))) + ".md"
+	params := op.ChatSessionCreateParams{
+		AgentID:  strings.TrimSpace(memoryNode.ID),
+		CWD:      memoryCWD,
+		ChatPath: filepath.Join(chatDir, name),
+		Title:    "Memory update",
+	}
+	raw, err := json.Marshal(params)
+	if err != nil {
+		return nil, err
+	}
+	result, err := session.OpNode(ctx, &op.OpNodeParams{
+		OpCode:  op.OpChatSessionCreate,
+		Meta:    op.Meta{"agentID": params.AgentID},
+		Content: op.NewJsonContentRaw(raw),
+	})
+	if err != nil {
+		return nil, err
+	}
+	if result == nil {
+		return nil, fmt.Errorf("chat/session/create returned nil result")
+	}
+	jsonContent, ok := result.Content.(*op.JsonContent)
+	if !ok || jsonContent == nil {
+		return nil, fmt.Errorf("chat/session/create did not return json content")
+	}
+	var created op.ChatSessionCreateResult
+	if err := json.Unmarshal(jsonContent.Raw, &created); err != nil {
+		return nil, fmt.Errorf("decode chat session create result: %w", err)
+	}
+	return &created, nil
+}
+
+func runMemoryUpdateLoop(ctx context.Context, session *op.ServerSession, memoryNode *listedNode, created *op.ChatSessionCreateResult, summary memoryTurnSummary) error {
+	if memoryNode == nil || created == nil {
+		return fmt.Errorf("memory node and session are required")
+	}
+	memoryCWD := filepath.Dir(strings.TrimSpace(summary.MemoryPath))
+	chatPath := firstNonEmpty(created.ChatPath, created.Path)
+	meta := op.Meta{
+		"agentID":       strings.TrimSpace(memoryNode.ID),
+		"threadID":      strings.TrimSpace(created.ThreadID),
+		"cwd":           memoryCWD,
+		"chatPath":      chatPath,
+		"path":          chatPath,
+		"title":         firstNonEmpty(created.Title, "Memory update"),
+		"modelKey":      summary.ModelKey,
+		"thinkingLevel": "off",
+	}
+	if summary.ParentThreadID != "" {
+		meta["parentThreadID"] = summary.ParentThreadID
+	}
+	_, err := session.OpNode(ctx, &op.OpNodeParams{
+		OpCode:  op.OpAgentLoopCreate,
+		Meta:    meta,
+		Content: &op.TextContent{Text: buildMemoryUpdatePrompt(summary)},
+	})
+	return err
+}
+
+func buildMemoryUpdatePrompt(summary memoryTurnSummary) string {
+	lines := []string{
+		"Update the durable OpAgent memory file.",
+		"",
+		"Paths and source context:",
+		"- memoryPath: " + summary.MemoryPath,
+		"- parentChatPath: " + firstNonEmpty(summary.ParentChatPath, "unavailable"),
+		"- parentThreadID: " + firstNonEmpty(summary.ParentThreadID, "unavailable"),
+		"- parentTurnID: " + firstNonEmpty(summary.ParentTurnID, "unavailable"),
+		"",
+		"Use the read tool to inspect parentChatPath when it is available. If the markdown file has not yet caught up with this turn, use the turn excerpt below as the source for this update.",
+		"",
+		"Parent user message:",
+		fencedForPrompt(summary.UserText),
+		"",
+		"Parent assistant response:",
+		fencedForPrompt(summary.AssistantText),
+	}
+	return strings.Join(lines, "\n")
+}
+
+func userTextFromContent(content op.Content) string {
+	msg, err := op.DecodeUserMessageContent(content)
+	if err != nil {
+		if text, ok := content.(*op.TextContent); ok && text != nil {
+			return strings.TrimSpace(text.Text)
+		}
+		return ""
+	}
+	return messageText(msg)
+}
+
+func assistantTextFromResult(content op.Content) string {
+	switch typed := content.(type) {
+	case *op.JsonContent:
+		if typed == nil {
+			return ""
+		}
+		var messages []op.Message
+		if err := json.Unmarshal(typed.Raw, &messages); err != nil {
+			return ""
+		}
+		for i := len(messages) - 1; i >= 0; i-- {
+			if messages[i].Role != op.RoleAssistant {
+				continue
+			}
+			if text := messageText(messages[i]); text != "" {
+				return text
+			}
+		}
+	case *op.TextContent:
+		if typed != nil {
+			return strings.TrimSpace(typed.Text)
+		}
+	}
+	return ""
+}
+
+func messageText(msg op.Message) string {
+	if text := strings.TrimSpace(msg.Content); text != "" {
+		return text
+	}
+	parts := make([]string, 0, len(msg.ContentParts))
+	for _, part := range msg.ContentParts {
+		if text := strings.TrimSpace(part.Text); text != "" {
+			parts = append(parts, text)
+		}
+	}
+	return strings.TrimSpace(strings.Join(parts, "\n"))
+}
+
+func truncateForPrompt(text string, limit int) string {
+	text = strings.TrimSpace(text)
+	if limit <= 0 || len(text) <= limit {
+		return text
+	}
+	return strings.TrimSpace(text[:limit]) + "\n[truncated]"
+}
+
+func fencedForPrompt(text string) string {
+	text = strings.ReplaceAll(strings.TrimSpace(text), "```", "` ` `")
+	if text == "" {
+		text = "unavailable"
+	}
+	return "```\n" + text + "\n```"
+}
+
+func sanitizePathPart(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return "unknown"
+	}
+	var b strings.Builder
+	for _, r := range value {
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '-' || r == '_' {
+			b.WriteRune(r)
+			continue
+		}
+		b.WriteByte('-')
+	}
+	out := strings.Trim(b.String(), "-")
+	if out == "" {
+		return "unknown"
+	}
+	if len(out) > 96 {
+		out = out[:96]
+	}
+	return out
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if trimmed := strings.TrimSpace(value); trimmed != "" {
+			return trimmed
+		}
+	}
+	return ""
 }
 
 func loadAgentRegistrationMeta() (string, *op.AgentMeta, error) {

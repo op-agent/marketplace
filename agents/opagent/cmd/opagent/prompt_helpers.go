@@ -110,6 +110,23 @@ func AppendCwdAgentsPathInstruction(basePrompt, agentsPath string) string {
 	return strings.TrimRight(basePrompt, "\n") + "\n\n" + appendix
 }
 
+func AppendMemoryPathInstruction(basePrompt, memoryPath string) string {
+	memoryPath = strings.TrimSpace(memoryPath)
+	if memoryPath == "" {
+		return basePrompt
+	}
+	appendix := strings.Join([]string{
+		"## OpAgent Memory",
+		"",
+		fmt.Sprintf("Durable OpAgent memory is stored at: %s", memoryPath),
+		"Use the read tool to inspect it when long-term project or user context would help this turn.",
+	}, "\n")
+	if strings.TrimSpace(basePrompt) == "" {
+		return appendix
+	}
+	return strings.TrimRight(basePrompt, "\n") + "\n\n" + appendix
+}
+
 func BuildSystemPrompt(basePrompt, cwdAgents string, availableSkills, selectedSkills []SkillContext, selectedSkillContext map[string]any) string {
 	prompt := AppendCwdAgentsContext(basePrompt, cwdAgents)
 	return buildSystemPromptWithSkills(prompt, availableSkills, selectedSkills, selectedSkillContext)
@@ -117,6 +134,12 @@ func BuildSystemPrompt(basePrompt, cwdAgents string, availableSkills, selectedSk
 
 func BuildSystemPromptWithCwdAgentsPath(basePrompt, cwdAgentsPath string, availableSkills, selectedSkills []SkillContext, selectedSkillContext map[string]any) string {
 	prompt := AppendCwdAgentsPathInstruction(basePrompt, cwdAgentsPath)
+	return buildSystemPromptWithSkills(prompt, availableSkills, selectedSkills, selectedSkillContext)
+}
+
+func BuildSystemPromptWithPaths(basePrompt, cwdAgentsPath, memoryPath string, availableSkills, selectedSkills []SkillContext, selectedSkillContext map[string]any) string {
+	prompt := AppendCwdAgentsPathInstruction(basePrompt, cwdAgentsPath)
+	prompt = AppendMemoryPathInstruction(prompt, memoryPath)
 	return buildSystemPromptWithSkills(prompt, availableSkills, selectedSkills, selectedSkillContext)
 }
 

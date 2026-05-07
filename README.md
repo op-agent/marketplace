@@ -7,6 +7,7 @@ Open-source catalog of agents, skills, and tools for [OpAgent](https://www.opage
 | ID | Name | Description |
 |---|---|---|
 | `claude-code` | Claude Code | Claude Code bridge for workspace-aware coding tasks |
+| `codex` | Codex | OpenAI Codex SDK bridge for workspace-aware coding tasks |
 | `completion` | Completion | Inline editor completion prompt |
 | `opagent` | OpAgent | Expert coding assistant for development and debugging |
 | `researcher` | Researcher | Evidence-first research agent for cited markdown reports |
@@ -33,6 +34,8 @@ Open-source catalog of agents, skills, and tools for [OpAgent](https://www.opage
 agents/<id>/
   AGENT.md              Agent definition
   cmd/<id>/main.go      Agent entry point, when the agent has a runnable daemon
+  src/                  TypeScript agent source, when the agent is SDK-backed
+  bin/                  Agent launcher scripts or compiled binaries
   skills/               Agent-specific skills (if any)
   tools/                Agent-specific tools (if any)
 
@@ -58,10 +61,12 @@ Required publishing secrets are stored in GitHub repository settings, not in thi
 
 ## Build
 
-This repository is a standalone Go module.
+This repository is a standalone Go module with a few TypeScript daemon agents.
 
 ```bash
 go test ./...
+cd agents/claude-code && npm run check
+cd ../codex && npm run check
 ```
 
 GitHub Actions builds release packages for supported platforms and publishes them to R2 after changes are merged to `main`.

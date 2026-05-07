@@ -37,6 +37,7 @@ jobs:
           cache: npm
           cache-dependency-path: |
             marketplace/agents/claude-code/package-lock.json
+            marketplace/agents/codex/package-lock.json
             opagent-protocol/ts-sdk/package-lock.json
 
       - name: Validate structure and public-safe content
@@ -50,7 +51,6 @@ jobs:
             go.mod
             agents/claude-code/AGENT.md
             agents/claude-code/bin/claude-code
-            agents/claude-code/cmd/claude-code/main.go
             agents/claude-code/package.json
             agents/claude-code/package-lock.json
             agents/claude-code/src/main.ts
@@ -58,6 +58,15 @@ jobs:
             agents/claude-code/src/claudeEvents.ts
             agents/claude-code/src/config.ts
             agents/claude-code/tsconfig.json
+            agents/codex/AGENT.md
+            agents/codex/bin/codex
+            agents/codex/package.json
+            agents/codex/package-lock.json
+            agents/codex/src/main.ts
+            agents/codex/src/codex.ts
+            agents/codex/src/codexEvents.ts
+            agents/codex/src/config.ts
+            agents/codex/tsconfig.json
             agents/completion/AGENT.md
             agents/opagent/AGENT.md
             agents/opagent/cmd/opagent/main.go
@@ -82,8 +91,8 @@ jobs:
           [[ ! -e AGENTS.md ]] || { echo "AGENTS.md must not be committed to the public marketplace repo" >&2; exit 1; }
           [[ ! -d scripts ]] || { echo "internal build/release scripts must not be committed to the public marketplace repo" >&2; exit 1; }
           [[ ! -d internal ]] || { echo "shared internal packages must not be committed; helpers should live beside the agent/tool that uses them" >&2; exit 1; }
-          if grep -nE '\("agent",[[:space:]]*"claude-code"\)' .github/workflows/publish.yml; then
-            echo "claude-code must remain manual-install only; do not publish it as a builtin item" >&2
+          if grep -nE '\("agent",[[:space:]]*"(claude-code|codex)"\)' .github/workflows/publish.yml; then
+            echo "claude-code and codex must remain manual-install only; do not publish them as builtin items" >&2
             exit 1
           fi
 
@@ -111,6 +120,10 @@ jobs:
           npm run check
 
           cd ../../marketplace/agents/claude-code
+          npm ci --install-links --ignore-scripts --no-audit --no-fund
+          npm run check
+
+          cd ../codex
           npm ci --install-links --ignore-scripts --no-audit --no-fund
           npm run check
 

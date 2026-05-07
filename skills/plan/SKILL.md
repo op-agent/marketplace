@@ -1,6 +1,6 @@
 ---
 name: Plan
-description: Research a task and create or update a markdown plan file in .agent/plan with a dedicated task section.
+description: Research a task and create or update a markdown plan file in .agent/context with a dedicated task section.
 tags: builtin
 ---
 

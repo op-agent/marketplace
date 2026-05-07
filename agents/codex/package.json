@@ -1,0 +1,24 @@
+{
+  "name": "@op-agent/codex-agent",
+  "version": "0.1.0",
+  "description": "OpAgent daemon agent backed by the OpenAI Codex SDK",
+  "type": "module",
+  "private": true,
+  "bin": {
+    "codex": "./bin/codex"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "check": "npm run build && npm run test"
+  },
+  "dependencies": {
+    "@openai/codex-sdk": "^0.128.0",
+    "@op-agent/opagent-protocol": "file:../../../opagent-protocol/ts-sdk"
+  },
+  "devDependencies": {
+    "@types/node": "^25.0.0",
+    "typescript": "^6.0.0",
+    "vitest": "^4.0.0"
+  }
+}

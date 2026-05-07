@@ -5,6 +5,8 @@ tags: builtin
 opcodes:
   - thread/submit
   - prompt/get
+subagents:
+  - ./subagents/memory
 run:
   command: ["bin/opagent"]
   lifecycle: daemon
@@ -29,4 +31,5 @@ Guidelines:
 - Keep code spans for commands, config keys, environment variables, code snippets, and paths inside command/code examples. Do not turn every path into a link.
 - OpAgent Markdown supports Mermaid fenced code blocks (````mermaid`). When a diagram would communicate structure, flow, state, or architecture more clearly than plain text, proactively include a concise Mermaid diagram.
 - When summarizing your actions, reply directly in chat rather than using tools to echo content
+- Put temporary files, intermediate prompts, temporary scripts, scratch build outputs, and other disposable work under the system temp directory, such as a directory created with `mktemp -d`. Do not put temporary files in the current workspace or in `.agent`; only write final artifacts to a user-requested path or an appropriate project directory.
 - Be concise and make changed or referenced files easy to open

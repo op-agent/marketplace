@@ -41,6 +41,7 @@ jobs:
           cache: npm
           cache-dependency-path: |
             marketplace/agents/claude-code/package-lock.json
+            marketplace/agents/codex/package-lock.json
             opagent-protocol/ts-sdk/package-lock.json
 
       - name: Install Python R2 client dependencies
@@ -82,6 +83,15 @@ jobs:
             esac
           }
 
+          platform_to_npm() {
+            case "$1" in
+              darwin-arm64) echo "darwin arm64" ;;
+              linux-amd64) echo "linux x64" ;;
+              linux-arm64) echo "linux arm64" ;;
+              *) echo "unsupported npm platform: $1" >&2; exit 1 ;;
+            esac
+          }
+
           sha256_file() {
             sha256sum "$1" | awk '{print $1}'
           }
@@ -117,7 +127,7 @@ jobs:
             rm -rf "$work_dir"
           }
 
-          prepare_claude_code_agent() {
+          prepare_typescript_agents() {
             echo "[build] TypeScript SDK: opagent-protocol"
             (
               cd ../opagent-protocol/ts-sdk
@@ -131,17 +141,33 @@ jobs:
               npm ci --install-links --omit=optional --ignore-scripts --no-audit --no-fund
               npm run build
             )
+
+            echo "[build] TypeScript agent: codex"
+            (
+              cd agents/codex
+              npm ci --install-links --omit=optional --ignore-scripts --no-audit --no-fund
+              npm run build
+            )
           }
 
-          install_claude_code_runtime_deps() {
-            local stage_dir="$1"
+          install_typescript_agent_runtime_deps() {
+            local agent_id="$1" stage_dir="$2" platform="$3"
             local tmp_dir
-            tmp_dir="$(mktemp -d "agents/.claude-code-prod.XXXXXX")"
-            cp agents/claude-code/package.json agents/claude-code/package-lock.json "$tmp_dir/"
-            (
-              cd "$tmp_dir"
-              npm ci --install-links --omit=dev --omit=optional --ignore-scripts --no-audit --no-fund
-            )
+            tmp_dir="$(mktemp -d "agents/.${agent_id}-prod.XXXXXX")"
+            cp "agents/${agent_id}/package.json" "agents/${agent_id}/package-lock.json" "$tmp_dir/"
+            if [[ "$agent_id" == "codex" ]]; then
+              local npm_os npm_cpu
+              read -r npm_os npm_cpu <<<"$(platform_to_npm "$platform")"
+              (
+                cd "$tmp_dir"
+                npm ci --install-links --omit=dev --include=optional --ignore-scripts --no-audit --no-fund --os="$npm_os" --cpu="$npm_cpu"
+              )
+            else
+              (
+                cd "$tmp_dir"
+                npm ci --install-links --omit=dev --omit=optional --ignore-scripts --no-audit --no-fund
+              )
+            fi
             cp -R "$tmp_dir/node_modules" "$stage_dir/node_modules"
             rm -rf "$tmp_dir"
           }
@@ -155,11 +181,11 @@ jobs:
             mkdir -p "$stage_dir/.agent" "$stage_dir/bin" "$pkg_dir"
 
             echo "[build] ${platform}: agent ${agent_id}"
-            if [[ "$agent_id" == "claude-code" ]]; then
-              cp -R agents/claude-code/bin/. "$stage_dir/bin/"
-              cp -R agents/claude-code/dist "$stage_dir/dist"
-              cp agents/claude-code/package.json agents/claude-code/package-lock.json "$stage_dir/"
-              install_claude_code_runtime_deps "$stage_dir"
+            if [[ "$agent_id" == "claude-code" || "$agent_id" == "codex" ]]; then
+              cp -R "agents/${agent_id}/bin/." "$stage_dir/bin/"
+              cp -R "agents/${agent_id}/dist" "$stage_dir/dist"
+              cp "agents/${agent_id}/package.json" "agents/${agent_id}/package-lock.json" "$stage_dir/"
+              install_typescript_agent_runtime_deps "$agent_id" "$stage_dir" "$platform"
             elif [[ -f "agents/${agent_id}/cmd/${agent_id}/main.go" ]]; then
               GOOS="$GOOS" GOARCH="$GOARCH" CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o "$stage_dir/bin/$agent_id" "./agents/${agent_id}/cmd/${agent_id}"
             fi
@@ -276,10 +302,11 @@ jobs:
           PY
           }
 
-          prepare_claude_code_agent
+          prepare_typescript_agents
 
           for platform in "${PLATFORMS[@]}"; do
             build_agent_package claude-code "Claude Code" "Claude Code bridge for workspace-aware coding tasks." "$platform"
+            build_agent_package codex Codex "OpenAI Codex SDK bridge for workspace-aware coding tasks." "$platform"
             build_agent_package completion Completion "Inline editor completion prompt." "$platform"
             build_agent_package opagent OpAgent "Expert coding assistant for OpAgent development and debugging." "$platform"
             build_agent_package researcher Researcher "Evidence-first research agent for cited markdown reports." "$platform"
@@ -296,7 +323,7 @@ jobs:
           import os
           from pathlib import Path
 
-          # Claude Code requires user-local Claude CLI auth and must stay manual-install only.
+          # Claude Code and Codex require user-local auth and must stay manual-install only.
           builtin_items = {
               ("agent", "completion"),
               ("agent", "opagent"),
