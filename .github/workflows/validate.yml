@@ -70,6 +70,7 @@ jobs:
             agents/completion/AGENT.md
             agents/opagent/AGENT.md
             agents/opagent/cmd/opagent/main.go
+            agents/opagent/subagents/memory/.agent/AGENT.md
             agents/researcher/AGENT.md
             agents/researcher/cmd/researcher/main.go
             agents/researcher/tools/research-tools/TOOLS.md

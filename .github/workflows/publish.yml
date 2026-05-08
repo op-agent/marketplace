@@ -190,6 +190,10 @@ jobs:
               GOOS="$GOOS" GOARCH="$GOARCH" CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o "$stage_dir/bin/$agent_id" "./agents/${agent_id}/cmd/${agent_id}"
             fi
             cp "agents/${agent_id}/AGENT.md" "$stage_dir/.agent/AGENT.md"
+            if [[ -d "agents/${agent_id}/subagents" ]]; then
+              mkdir -p "$stage_dir/subagents"
+              cp -R "agents/${agent_id}/subagents/." "$stage_dir/subagents/"
+            fi
 
             if [[ "$agent_id" == "researcher" ]]; then
               mkdir -p "$stage_dir/skills" "$stage_dir/tools/research-tools/bin"
