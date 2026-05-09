@@ -18,12 +18,6 @@ jobs:
         with:
           path: marketplace
 
-      - name: Checkout protocol source
-        uses: actions/checkout@v4
-        with:
-          repository: op-agent/opagent-protocol
-          path: opagent-protocol
-
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
@@ -38,7 +32,6 @@ jobs:
           cache-dependency-path: |
             marketplace/agents/claude-code/package-lock.json
             marketplace/agents/codex/package-lock.json
-            opagent-protocol/ts-sdk/package-lock.json
 
       - name: Validate structure and public-safe content
         shell: bash
@@ -129,11 +122,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          cd opagent-protocol/ts-sdk
-          npm ci --ignore-scripts --no-audit --no-fund
-          npm run check
-
-          cd ../../marketplace/agents/claude-code
+          cd marketplace/agents/claude-code
           npm ci --install-links --ignore-scripts --no-audit --no-fund
           npm run check
 

@@ -22,12 +22,6 @@ jobs:
         with:
           path: marketplace
 
-      - name: Checkout protocol source
-        uses: actions/checkout@v4
-        with:
-          repository: op-agent/opagent-protocol
-          path: opagent-protocol
-
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
@@ -42,7 +36,6 @@ jobs:
           cache-dependency-path: |
             marketplace/agents/claude-code/package-lock.json
             marketplace/agents/codex/package-lock.json
-            opagent-protocol/ts-sdk/package-lock.json
 
       - name: Install Python R2 client dependencies
         run: python3 -m pip install --user boto3 botocore
@@ -128,13 +121,6 @@ jobs:
           }
 
           prepare_typescript_agents() {
-            echo "[build] TypeScript SDK: opagent-protocol"
-            (
-              cd ../opagent-protocol/ts-sdk
-              npm ci --omit=optional --ignore-scripts --no-audit --no-fund
-              npm run build
-            )
-
             echo "[build] TypeScript agent: claude-code"
             (
               cd agents/claude-code
