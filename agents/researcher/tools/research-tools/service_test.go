@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/op-agent/opagent-protocol/go-sdk/op"
+	"github.com/op-agent/OpAgent/opagent-protocol/go-sdk/op"
 )
 
 type mockRunner struct {

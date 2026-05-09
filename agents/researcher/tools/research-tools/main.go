@@ -9,7 +9,7 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/op-agent/opagent-protocol/go-sdk/op"
+	"github.com/op-agent/OpAgent/opagent-protocol/go-sdk/op"
 )
 
 func main() {

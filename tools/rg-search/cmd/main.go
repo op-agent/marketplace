@@ -10,7 +10,7 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/op-agent/opagent-protocol/go-sdk/op"
+	"github.com/op-agent/OpAgent/opagent-protocol/go-sdk/op"
 	"github.com/spf13/cobra"
 )
 

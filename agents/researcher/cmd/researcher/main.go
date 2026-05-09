@@ -13,7 +13,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/op-agent/opagent-protocol/go-sdk/op"
+	"github.com/op-agent/OpAgent/opagent-protocol/go-sdk/op"
 	"gopkg.in/yaml.v3"
 )
 

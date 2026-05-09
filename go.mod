@@ -3,7 +3,7 @@ module github.com/op-agent/marketplace
 go 1.26.0
 
 require (
-	github.com/op-agent/opagent-protocol/go-sdk v0.4.0
+	github.com/op-agent/OpAgent/opagent-protocol/go-sdk v0.4.1
 	github.com/spf13/cobra v1.10.2
 	golang.org/x/net v0.48.0
 	gopkg.in/yaml.v3 v3.0.1

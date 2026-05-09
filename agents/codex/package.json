@@ -13,8 +13,8 @@
     "check": "npm run build && npm run test"
   },
   "dependencies": {
-    "@openai/codex-sdk": "^0.128.0",
-    "@op-agent/opagent-protocol": "file:../../../opagent-protocol/ts-sdk"
+    "@op-agent/opagent-protocol": "https://raw.githubusercontent.com/op-agent/OpAgent/a3422b5b8320b800900e052ac299b690f4fa8332/opagent-protocol/ts-sdk/releases/op-agent-opagent-protocol-0.1.1.tgz",
+    "@openai/codex-sdk": "^0.128.0"
   },
   "devDependencies": {
     "@types/node": "^25.0.0",
