@@ -21,19 +21,6 @@ Open-source catalog of agents, skills, and tools for [OpAgent](https://www.opage
 | `skill-creator` | Skill Creator | Create or update OpAgent skills for marketplace or local installation |
 | `agent-browser-search` | Agent Browser Search | Search the web with agent-browser and extract source evidence |
 | `chatgpt-image` | ChatGPT Image | Binary-only skill for paid OpAgent image generation and editing |
-| `hyperframes` | HyperFrames | Create HyperFrames HTML video compositions, animations, captions, audio-reactive visuals, and transitions |
-| `hyperframes-cli` | HyperFrames CLI | Use the HyperFrames CLI for scaffold, lint, inspect, preview, render, and environment troubleshooting |
-| `hyperframes-media` | HyperFrames Media | Preprocess assets for HyperFrames with TTS, transcription, and background removal workflows |
-| `hyperframes-registry` | HyperFrames Registry | Install and wire HyperFrames registry blocks and components into compositions |
-| `tailwind` | Tailwind | Use Tailwind CSS v4 browser-runtime patterns in HyperFrames compositions |
-| `gsap` | GSAP | Write deterministic GSAP animations and timelines for HyperFrames compositions |
-| `animejs` | Anime.js | Write deterministic Anime.js animations and timelines for HyperFrames compositions |
-| `css-animations` | CSS Animations | Write deterministic CSS keyframe animations for HyperFrames compositions |
-| `lottie` | Lottie | Embed deterministic Lottie and dotLottie animations in HyperFrames compositions |
-| `three` | Three.js | Create deterministic Three.js and WebGL scenes for HyperFrames compositions |
-| `waapi` | Web Animations API | Write deterministic Web Animations API motion for HyperFrames compositions |
-| `website-to-hyperframes` | Website to HyperFrames | Capture a website and turn it into a HyperFrames video workflow |
-| `remotion-to-hyperframes` | Remotion to HyperFrames | Translate explicit Remotion migration requests into HyperFrames HTML compositions |
 
 ## Tools
 

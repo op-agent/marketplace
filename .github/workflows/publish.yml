@@ -306,19 +306,6 @@ jobs:
           build_skill_package execute-plan "Execute Plan" "Execute a bound markdown plan file and update checklist progress in place."
           build_skill_package skill-creator "Skill Creator" "Create or update OpAgent skills for marketplace or local installation."
           build_skill_package agent-browser-search "Agent Browser Search" "Search the web with agent-browser and extract source evidence."
-          build_skill_package hyperframes HyperFrames "Create HyperFrames HTML video compositions, animations, captions, audio-reactive visuals, and transitions."
-          build_skill_package hyperframes-cli "HyperFrames CLI" "Use the HyperFrames CLI for scaffold, lint, inspect, preview, render, and environment troubleshooting."
-          build_skill_package hyperframes-media "HyperFrames Media" "Preprocess assets for HyperFrames with TTS, transcription, and background removal workflows."
-          build_skill_package hyperframes-registry "HyperFrames Registry" "Install and wire HyperFrames registry blocks and components into compositions."
-          build_skill_package tailwind Tailwind "Use Tailwind CSS v4 browser-runtime patterns in HyperFrames compositions."
-          build_skill_package gsap GSAP "Write deterministic GSAP animations and timelines for HyperFrames compositions."
-          build_skill_package animejs "Anime.js" "Write deterministic Anime.js animations and timelines for HyperFrames compositions."
-          build_skill_package css-animations "CSS Animations" "Write deterministic CSS keyframe animations for HyperFrames compositions."
-          build_skill_package lottie Lottie "Embed deterministic Lottie and dotLottie animations in HyperFrames compositions."
-          build_skill_package three "Three.js" "Create deterministic Three.js and WebGL scenes for HyperFrames compositions."
-          build_skill_package waapi "Web Animations API" "Write deterministic Web Animations API motion for HyperFrames compositions."
-          build_skill_package website-to-hyperframes "Website to HyperFrames" "Capture a website and turn it into a HyperFrames video workflow."
-          build_skill_package remotion-to-hyperframes "Remotion to HyperFrames" "Translate explicit Remotion migration requests into HyperFrames HTML compositions."
           include_prebuilt_closed_packages
 
           ASSET_INDEX_ENV="$ASSET_INDEX" INDEX_FILE_ENV="$VERSION_DIR/index.json" python3 - <<'PY'
@@ -335,19 +322,6 @@ jobs:
               ("skill", "execute-plan"),
               ("skill", "skill-creator"),
               ("skill", "agent-browser-search"),
-              ("skill", "hyperframes"),
-              ("skill", "hyperframes-cli"),
-              ("skill", "hyperframes-media"),
-              ("skill", "hyperframes-registry"),
-              ("skill", "tailwind"),
-              ("skill", "gsap"),
-              ("skill", "animejs"),
-              ("skill", "css-animations"),
-              ("skill", "lottie"),
-              ("skill", "three"),
-              ("skill", "waapi"),
-              ("skill", "website-to-hyperframes"),
-              ("skill", "remotion-to-hyperframes"),
               ("tool", "rg-search"),
           }
           items = {}

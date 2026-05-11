@@ -73,19 +73,6 @@ jobs:
             skills/execute-plan/SKILL.md
             skills/skill-creator/SKILL.md
             skills/agent-browser-search/SKILL.md
-            skills/hyperframes/SKILL.md
-            skills/hyperframes-cli/SKILL.md
-            skills/hyperframes-media/SKILL.md
-            skills/hyperframes-registry/SKILL.md
-            skills/tailwind/SKILL.md
-            skills/gsap/SKILL.md
-            skills/animejs/SKILL.md
-            skills/css-animations/SKILL.md
-            skills/lottie/SKILL.md
-            skills/three/SKILL.md
-            skills/waapi/SKILL.md
-            skills/website-to-hyperframes/SKILL.md
-            skills/remotion-to-hyperframes/SKILL.md
             tools/rg-search/TOOLS.md
             tools/rg-search/cmd/main.go
           )
