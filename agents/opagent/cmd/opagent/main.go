@@ -131,7 +131,8 @@ func buildPrompt(ctx context.Context, session *op.ServerSession, agentFile strin
 	if err != nil {
 		return "", fmt.Errorf("load agent prompt: %w", err)
 	}
-	basePrompt = ExpandPlatformVariables(basePrompt, runtime.GOOS)
+	platform := runtime.GOOS
+	basePrompt = ExpandPlatformVariables(basePrompt, platform)
 
 	cwdAgentsPath, err := ResolveCwdAgentsPath(metaString(meta, "cwd"))
 	if err != nil {
@@ -144,7 +145,7 @@ func buildPrompt(ctx context.Context, session *op.ServerSession, agentFile strin
 	}
 
 	memoryPath := resolveOpAgentMemoryPath(ctx, session)
-	return BuildSystemPromptWithPaths(basePrompt, cwdAgentsPath, memoryPath, availableSkills, selectedSkills, selectedSkillContextFromMeta(meta)), nil
+	return BuildSystemPromptWithPaths(basePrompt, ResolveOpAgentShellContext(platform), cwdAgentsPath, memoryPath, availableSkills, selectedSkills, selectedSkillContextFromMeta(meta)), nil
 }
 
 func resolveOpAgentMemoryPath(ctx context.Context, session *op.ServerSession) string {

@@ -17,6 +17,13 @@ type SkillContext struct {
 	SkillDir    string
 }
 
+type OpAgentShellContext struct {
+	OS        string
+	Tool      string
+	Execution string
+	Syntax    string
+}
+
 func LoadMarkdownBody(path string) (string, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -46,6 +53,27 @@ func ExpandPlatformVariables(prompt, platform string) string {
 		return ""
 	}
 	return strings.ReplaceAll(prompt, "${platform}", strings.TrimSpace(platform))
+}
+
+func ResolveOpAgentShellContext(platform string) OpAgentShellContext {
+	platform = strings.TrimSpace(platform)
+	if platform == "" {
+		platform = "unknown"
+	}
+	if platform == "windows" {
+		return OpAgentShellContext{
+			OS:        platform,
+			Tool:      "shell",
+			Execution: "powershell.exe -NoProfile -ExecutionPolicy Bypass -Command <command>",
+			Syntax:    "Write PowerShell syntax for command. Use $env:NAME for environment variables and PowerShell pipelines/cmdlets where appropriate.",
+		}
+	}
+	return OpAgentShellContext{
+		OS:        platform,
+		Tool:      "shell",
+		Execution: "sh -c <command>",
+		Syntax:    "Write POSIX sh syntax for command. Do not rely on Bash-only features unless you explicitly invoke an available bash binary.",
+	}
 }
 
 func ReadCwdAgentsContext(cwd string) (string, error) {
@@ -127,6 +155,32 @@ func AppendMemoryPathInstruction(basePrompt, memoryPath string) string {
 	return strings.TrimRight(basePrompt, "\n") + "\n\n" + appendix
 }
 
+func AppendOpAgentShellContext(basePrompt string, ctx OpAgentShellContext) string {
+	ctx.OS = strings.TrimSpace(ctx.OS)
+	ctx.Tool = strings.TrimSpace(ctx.Tool)
+	ctx.Execution = strings.TrimSpace(ctx.Execution)
+	ctx.Syntax = strings.TrimSpace(ctx.Syntax)
+	if ctx.Tool == "" {
+		ctx.Tool = "shell"
+	}
+	if ctx.OS == "" && ctx.Execution == "" && ctx.Syntax == "" {
+		return basePrompt
+	}
+	lines := []string{
+		"## OpAgent Shell Context",
+		"",
+		fmt.Sprintf("- OS: %s", ctx.OS),
+		fmt.Sprintf("- Tool: %s", ctx.Tool),
+		fmt.Sprintf("- Execution: %s", ctx.Execution),
+		fmt.Sprintf("- Syntax: %s", ctx.Syntax),
+	}
+	appendix := strings.TrimRight(strings.Join(lines, "\n"), "\n")
+	if strings.TrimSpace(basePrompt) == "" {
+		return appendix
+	}
+	return strings.TrimRight(basePrompt, "\n") + "\n\n" + appendix
+}
+
 func BuildSystemPrompt(basePrompt, cwdAgents string, availableSkills, selectedSkills []SkillContext, selectedSkillContext map[string]any) string {
 	prompt := AppendCwdAgentsContext(basePrompt, cwdAgents)
 	return buildSystemPromptWithSkills(prompt, availableSkills, selectedSkills, selectedSkillContext)
@@ -137,8 +191,9 @@ func BuildSystemPromptWithCwdAgentsPath(basePrompt, cwdAgentsPath string, availa
 	return buildSystemPromptWithSkills(prompt, availableSkills, selectedSkills, selectedSkillContext)
 }
 
-func BuildSystemPromptWithPaths(basePrompt, cwdAgentsPath, memoryPath string, availableSkills, selectedSkills []SkillContext, selectedSkillContext map[string]any) string {
-	prompt := AppendCwdAgentsPathInstruction(basePrompt, cwdAgentsPath)
+func BuildSystemPromptWithPaths(basePrompt string, shellContext OpAgentShellContext, cwdAgentsPath, memoryPath string, availableSkills, selectedSkills []SkillContext, selectedSkillContext map[string]any) string {
+	prompt := AppendOpAgentShellContext(basePrompt, shellContext)
+	prompt = AppendCwdAgentsPathInstruction(prompt, cwdAgentsPath)
 	prompt = AppendMemoryPathInstruction(prompt, memoryPath)
 	return buildSystemPromptWithSkills(prompt, availableSkills, selectedSkills, selectedSkillContext)
 }
@@ -177,7 +232,7 @@ func appendSkillsAppendix(basePrompt string, skills []SkillContext) string {
 		"## Available Skills",
 		"When a task matches one of the skills below, first use the read tool to read that skill's SKILL.md before acting.",
 		"Resolve any relative paths mentioned in a skill against the listed skill directory.",
-		"Skills do not define new tools. Execute the workflow with the existing bash/read/write/edit tools.",
+		"Skills do not define new tools. Execute the workflow with the existing shell/read/write/edit tools.",
 		"",
 	}
 

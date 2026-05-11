@@ -154,7 +154,7 @@ func appendSkillsAppendix(basePrompt string, skills []SkillContext) string {
 		"## Available Skills",
 		"When a task matches one of the skills below, first use the read tool to read that skill's SKILL.md before acting.",
 		"Resolve any relative paths mentioned in a skill against the listed skill directory.",
-		"Skills do not define new tools. Execute the workflow with the existing bash/read/write/edit tools.",
+		"Skills do not define new tools. Execute the workflow with the existing research, read, write, and edit tools.",
 		"",
 	}
 

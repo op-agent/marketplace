@@ -210,6 +210,43 @@ func TestBuildPromptIncludesMemoryPath(t *testing.T) {
 	}
 }
 
+func TestBuildSystemPromptWithPathsIncludesOpAgentShellContext(t *testing.T) {
+	prompt := BuildSystemPromptWithPaths(
+		"Base prompt.",
+		ResolveOpAgentShellContext("windows"),
+		"",
+		"",
+		nil,
+		nil,
+		nil,
+	)
+	if !strings.Contains(prompt, "## OpAgent Shell Context") {
+		t.Fatalf("prompt missing shell context:\n%s", prompt)
+	}
+	if !strings.Contains(prompt, "powershell.exe -NoProfile -ExecutionPolicy Bypass -Command <command>") {
+		t.Fatalf("prompt missing powershell execution:\n%s", prompt)
+	}
+	if !strings.Contains(prompt, "Write PowerShell syntax") {
+		t.Fatalf("prompt missing powershell syntax guidance:\n%s", prompt)
+	}
+
+	prompt = BuildSystemPromptWithPaths(
+		"Base prompt.",
+		ResolveOpAgentShellContext("linux"),
+		"",
+		"",
+		nil,
+		nil,
+		nil,
+	)
+	if !strings.Contains(prompt, "sh -c <command>") {
+		t.Fatalf("prompt missing POSIX shell execution:\n%s", prompt)
+	}
+	if !strings.Contains(prompt, "Write POSIX sh syntax") {
+		t.Fatalf("prompt missing POSIX shell syntax guidance:\n%s", prompt)
+	}
+}
+
 func TestResolveSkillContextsUsesNodeIDs(t *testing.T) {
 	ctx := context.Background()
 	server := op.NewServer(&op.Implementation{Name: "opagent", Version: "v0.0.1"}, nil)

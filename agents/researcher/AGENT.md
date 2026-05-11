@@ -11,7 +11,6 @@ tools:
   - read
   - write
   - edit
-  - bash
   - ./tools/research-tools
 skills:
   - ./skills/deep-research/SKILL.md
