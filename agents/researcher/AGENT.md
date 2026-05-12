@@ -1,4 +1,5 @@
 ---
+id: agent-researcher
 name: "researcher"
 description: Evidence-first research agent for producing cited Markdown reports.
 opcodes:

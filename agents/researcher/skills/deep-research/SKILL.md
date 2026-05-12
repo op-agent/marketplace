@@ -1,4 +1,5 @@
 ---
+id: skill-researcher-deep-research
 name: Deep Research
 description: Use this skill for multi-source online research before answering or writing a report. It drives broad discovery, targeted source collection, browser fallback, and evidence verification.
 ---

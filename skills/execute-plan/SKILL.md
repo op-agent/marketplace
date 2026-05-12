@@ -1,4 +1,5 @@
 ---
+id: skill-execute-plan
 name: Execute Plan
 description: Execute a bound markdown plan file step by step and update checklist progress in place.
 tags: builtin

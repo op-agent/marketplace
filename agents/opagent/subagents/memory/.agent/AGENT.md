@@ -1,4 +1,5 @@
 ---
+id: agent-opagent-memory
 name: "opagent-memory"
 description: Updates durable OpAgent memory after parent opagent turns.
 tags: builtin

@@ -1,4 +1,5 @@
 ---
+id: agent-codex
 name: "Codex"
 description: "OpenAI Codex SDK bridge for workspace-aware coding tasks. Requires Codex/OpenAI authentication on the user's machine."
 opcodes:

@@ -1,4 +1,5 @@
 ---
+id: tools-rg-search
 name: rg-search
 description: System-level ripgrep bundle for shell search and workspace search.
 tags: system

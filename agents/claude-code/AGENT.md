@@ -1,4 +1,5 @@
 ---
+id: agent-claude-code
 name: "Claude Code"
 description: "Claude Code bridge for workspace-aware coding tasks. Requires the Anthropic Claude Code CLI on the user's machine."
 opcodes:

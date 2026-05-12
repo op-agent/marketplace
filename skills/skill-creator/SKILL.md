@@ -1,4 +1,5 @@
 ---
+id: skill-skill-creator
 name: Skill Creator
 description: Create or update OpAgent skills for marketplace or local installation. Use this when the user wants to design, scaffold, improve, review, or package a SKILL.md, especially under ~/.opagent/skills, an agent-local skills directory, or the OpAgent marketplace.
 tags: builtin

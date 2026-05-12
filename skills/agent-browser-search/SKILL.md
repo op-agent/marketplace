@@ -1,4 +1,5 @@
 ---
+id: skill-agent-browser-search
 name: Agent Browser Search
 description: Search the web with agent-browser and extract source evidence from live pages. Use this when the user asks to search, browse, inspect search results, compare pages, or collect web evidence with agent-browser. Run agent-browser --help for current usage and install guidance before relying on commands.
 tags: builtin

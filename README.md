@@ -51,6 +51,12 @@ tools/<id>/
   cmd/main.go           Tool entry point
 ```
 
+Published marketplace definitions should include a stable `id` in
+frontmatter (`agent-...`, `skill-...`, or `tools-...`). Runtime scan uses this
+ID directly so workspace `bind: @agent-...` references can survive across
+machines and organizations. Duplicate `id` values across different package
+URIs are hard errors.
+
 Helper code should live beside the agent or tool that uses it. Do not add shared `internal/` packages unless the code is intentionally becoming a public reusable module.
 
 ## Publishing

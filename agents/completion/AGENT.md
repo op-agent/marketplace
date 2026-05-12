@@ -1,4 +1,5 @@
 ---
+id: agent-completion
 name: completion
 description: Inline editor completion prompt
 tags:

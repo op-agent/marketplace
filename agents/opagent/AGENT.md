@@ -1,4 +1,5 @@
 ---
+id: agent-opagent
 name: "opagent"
 description: Expert coding assistant for OpAgent development and debugging.
 tags: builtin

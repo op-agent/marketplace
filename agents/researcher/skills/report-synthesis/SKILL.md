@@ -1,4 +1,5 @@
 ---
+id: skill-researcher-report-synthesis
 name: Report Synthesis
 description: Use this skill to turn collected evidence into a consulting-style Markdown report with explicit structure, citations, caveats, and a concise executive summary.
 ---
