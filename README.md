@@ -20,6 +20,7 @@ Open-source catalog of agents, skills, and tools for [OpAgent](https://www.opage
 | `execute-plan` | Execute Plan | Execute a bound markdown plan file and update checklist progress |
 | `skill-creator` | Skill Creator | Create or update OpAgent skills for marketplace or local installation |
 | `agent-browser-search` | Agent Browser Search | Search the web with agent-browser and extract source evidence |
+| `webkit-html-pdf` | WebKit HTML PDF | Export local HTML files or localhost pages to stable A4 PDFs on macOS |
 | `chatgpt-image` | ChatGPT Image | Binary-only skill for paid OpAgent image generation and editing |
 
 ## Tools
@@ -41,6 +42,7 @@ agents/<id>/
 
 skills/<id>/
   SKILL.md              Skill definition
+  scripts/              Optional helper scripts for deterministic workflows
 
 closed-packages/<id>/
   manifest.json         Binary-only package metadata
